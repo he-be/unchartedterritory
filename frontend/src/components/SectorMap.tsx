@@ -7,7 +7,7 @@ function SectorMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { gameState, selectedShipId, selectedSectorId, selectSector, sendShipCommand } = useGameStore();
   const [hoveredStation, setHoveredStation] = useState<Station | null>(null);
-  const [mousePos, setMousePos] = useState<{ screen: Vector2; world: Vector2 } | null>(null);
+  const [mousePos, setMousePos] = useState<{ screen: { x: number; y: number }; world: { x: number; y: number } } | null>(null);
   const [showCommands, setShowCommands] = useState(false);
   const [commandTarget, setCommandTarget] = useState<{ x: number; y: number } | null>(null);
 

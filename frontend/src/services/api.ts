@@ -2,7 +2,7 @@ import axios from 'axios';
 import { GameState, Sector, TradeOpportunity, ShipCommand, Player } from '../types/game';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },

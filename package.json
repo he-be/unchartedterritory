@@ -12,6 +12,8 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:worker": "wrangler dev src/worker.ts",
     "deploy": "wrangler deploy",
+    "deploy:frontend": "cd frontend && npm run build && wrangler deploy --config ../wrangler-frontend.toml",
+    "build:frontend": "cd frontend && npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
