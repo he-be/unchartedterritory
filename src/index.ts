@@ -23,7 +23,15 @@ app.post('/api/game/new', (req, res) => {
   gameStates.set(gameState.id, gameState);
   gameEvents.set(gameState.id, []);
 
-  return res.status(201).json(gameState);
+  return res.status(201).json({
+    gameId: gameState.id,
+    message: 'New game created',
+    initialState: {
+      playerId: gameState.player.name,
+      credits: gameState.player.credits,
+      shipCount: gameState.player.ships.length
+    }
+  });
 });
 
 app.get('/api/game/:gameId/state', (req, res) => {
@@ -47,7 +55,15 @@ app.get('/api/game/:gameId/state', (req, res) => {
   events.push(...economicEvents, ...movementEvents);
   gameEvents.set(gameId, events);
 
-  return res.json(gameState);
+  return res.json({
+    gameId: gameState.id,
+    player: gameState.player,
+    discoveredSectors: gameState.sectors.filter(s => s.discovered),
+    sectors: gameState.sectors,
+    wares: gameState.wares,
+    gameTime: gameState.gameTime,
+    lastUpdate: gameState.lastUpdate
+  });
 });
 
 // Sector and exploration endpoints
