@@ -1,6 +1,6 @@
 name = "unchartedterritory-frontend"
 main = "src/frontend-worker.ts"
-compatibility_date = "2024-09-19"
+compatibility_date = "2024-12-01"
 
 [assets]
 directory = "./frontend/dist"
