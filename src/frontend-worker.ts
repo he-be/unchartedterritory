@@ -1,4 +1,10 @@
 // Frontend Worker - Serves React app and proxies API calls using Static Assets
+
+// Static Assets binding type
+interface Fetcher {
+  fetch(request: Request): Promise<Response>;
+}
+
 interface Env {
   ASSETS: Fetcher;
 }
