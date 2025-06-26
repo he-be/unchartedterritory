@@ -6,7 +6,7 @@ import { useGameStore } from './store/gameStore'
 
 // Expose store to window for debugging
 if (typeof window !== 'undefined') {
-  (window as any).gameStore = useGameStore;
+  (window as Window & { gameStore?: typeof useGameStore }).gameStore = useGameStore;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

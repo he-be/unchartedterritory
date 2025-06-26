@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { Station } from '../types/game';
 import './SectorMap.css';
@@ -22,20 +22,20 @@ function SectorMap() {
   const SCALE = Math.min(CANVAS_WIDTH / WORLD_SIZE, CANVAS_HEIGHT / WORLD_SIZE);
 
   // Transform world coordinates to screen coordinates
-  const worldToScreen = (worldX: number, worldY: number): { x: number; y: number } => {
+  const worldToScreen = useCallback((worldX: number, worldY: number): { x: number; y: number } => {
     return {
       x: (worldX * SCALE) + CANVAS_WIDTH / 2,
       y: (worldY * SCALE) + CANVAS_HEIGHT / 2
     };
-  };
+  }, [SCALE, CANVAS_WIDTH, CANVAS_HEIGHT]);
 
   // Transform screen coordinates to world coordinates
-  const screenToWorld = (screenX: number, screenY: number): { x: number; y: number } => {
+  const screenToWorld = useCallback((screenX: number, screenY: number): { x: number; y: number } => {
     return {
       x: (screenX - CANVAS_WIDTH / 2) / SCALE,
       y: (screenY - CANVAS_HEIGHT / 2) / SCALE
     };
-  };
+  }, [SCALE, CANVAS_WIDTH, CANVAS_HEIGHT]);
 
   // Get mouse position relative to canvas, accounting for CSS scaling
   const getCanvasMousePos = (e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } => {
@@ -232,7 +232,7 @@ function SectorMap() {
     const interval = setInterval(render, 100);
 
     return () => clearInterval(interval);
-  }, [currentSector, gameState, selectedShipId, hoveredStation, commandTarget, mousePos]);
+  }, [currentSector, gameState, selectedShipId, hoveredStation, commandTarget, mousePos, worldToScreen]);
 
   const getStationColor = (type: Station['type']): string => {
     switch (type) {
