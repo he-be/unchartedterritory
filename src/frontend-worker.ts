@@ -14,7 +14,7 @@ export default {
     // Handle API requests - proxy to backend worker
     if (url.pathname.startsWith('/api/')) {
       // Replace with your actual backend worker URL
-      const backendUrl = 'https://unchartedterritory.masahiro-hibi.workers.dev/' + url.pathname + url.search;
+      const backendUrl = 'https://unchartedterritory.masahiro-hibi.workers.dev' + url.pathname + url.search;
       
       return fetch(backendUrl, {
         method: request.method,
@@ -36,11 +36,14 @@ export default {
         }
       );
     } catch (e) {
+      console.log('Asset not found, serving index.html for SPA routing:', e);
       // If asset not found, return index.html for SPA routing
       try {
         const indexRequest = new Request(`${url.origin}/index.html`, {
-          method: request.method,
-          headers: request.headers,
+          method: 'GET',
+          headers: {
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
         });
         
         return await getAssetFromKV(
@@ -54,7 +57,8 @@ export default {
           }
         );
       } catch (e) {
-        return new Response('Not Found', { status: 404 });
+        console.log('Failed to serve index.html:', e);
+        return new Response(`Debug: Failed to serve assets. Error: ${String(e)}. Env keys: ${Object.keys(env)}`, { status: 500 });
       }
     }
   },
