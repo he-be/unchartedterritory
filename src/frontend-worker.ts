@@ -12,7 +12,7 @@ export default {
     // Handle API requests - proxy to backend worker
     if (url.pathname.startsWith('/api/')) {
       // Replace with your actual backend worker URL
-      const backendUrl = 'https://unchartedterritory.your-subdomain.workers.dev' + url.pathname + url.search;
+      const backendUrl = 'https://unchartedterritory.masahiro-hibi.workers.dev/' + url.pathname + url.search;
       
       return fetch(backendUrl, {
         method: request.method,
