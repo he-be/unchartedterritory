@@ -3,7 +3,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     exclude: [
-      'frontend/**',
+      'frontend/tests/**', // Playwright tests  
+      'frontend/node_modules/**', // Frontend dependencies
       'node_modules/**',
       'dist/**'
     ],
@@ -20,7 +21,7 @@ export default defineConfig({
       exclude: [
         'node_modules/',
         'dist/',
-        'frontend/**',
+        'frontend/**', // Exclude all frontend files from coverage
         '**/*.d.ts',
         '**/*.config.*',
         'coverage/**',
