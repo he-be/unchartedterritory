@@ -1,6 +1,7 @@
 name = "unchartedterritory"
 main = "dist/worker.js"
 compatibility_date = "2024-01-01"
+# account_id will be read from CLOUDFLARE_ACCOUNT_ID environment variable
 
 [build]
 command = "npm run build:worker"
