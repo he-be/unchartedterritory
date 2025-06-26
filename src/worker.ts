@@ -11,7 +11,7 @@ const gameStates = new Map<string, GameState>();
 const gameEvents = new Map<string, GameEvent[]>();
 
 export default {
-  async fetch(request: Request, env: any): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
     

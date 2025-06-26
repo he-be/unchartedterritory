@@ -1,6 +1,15 @@
 // Frontend Worker - Serves React app and proxies API calls
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+}
+
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+}
+
 interface Env {
   __STATIC_CONTENT: KVNamespace;
 }
