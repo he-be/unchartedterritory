@@ -27,7 +27,7 @@ export default {
       } catch (error) {
         return new Response(JSON.stringify({
           error: 'Proxy failed',
-          message: error.message,
+          message: error instanceof Error ? error.message : String(error),
           backendUrl: backendUrl,
           originalUrl: url.toString(),
           method: request.method
