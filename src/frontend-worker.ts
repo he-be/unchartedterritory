@@ -19,6 +19,21 @@ export default {
     // Handle API requests - proxy to backend worker
     if (url.pathname.startsWith('/api/')) {
       console.log(`API request detected: ${url.pathname}`);
+      
+      // For debugging: First return a test response to confirm we're receiving API requests
+      if (url.pathname === '/api/game/new') {
+        return new Response(JSON.stringify({
+          debug: 'API request received in worker',
+          pathname: url.pathname,
+          method: request.method,
+          timestamp: new Date().toISOString(),
+          message: 'This confirms the worker is processing API requests'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      
       const backendUrl = 'https://unchartedterritory.masahiro-hibi.workers.dev' + url.pathname + url.search;
       
       try {
