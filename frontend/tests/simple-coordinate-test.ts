@@ -1,5 +1,18 @@
 // Simple coordinate test to run directly with Node
 import puppeteer from 'puppeteer';
+import type { GameState, TradeOpportunity } from '../src/types/game';
+
+// Type for the game store
+interface GameStore {
+  gameState: GameState | null;
+  selectedShipId: string | null;
+  selectedSectorId: string | null;
+  tradeOpportunities: TradeOpportunity[] | null;
+  isLoading: boolean;
+  error: string | null;
+  pollingInterval: NodeJS.Timeout | null;
+  getState: () => GameStore;
+}
 
 async function debugCoordinates() {
   const browser = await puppeteer.launch({ 
@@ -109,7 +122,7 @@ async function debugCoordinates() {
     
     // Get game state after click
     const gameState = await page.evaluate(() => {
-      const store = (window as any).gameStore;
+      const store = (window as Window & { gameStore?: GameStore }).gameStore;
       if (!store) return null;
       const state = store.getState();
       const ship = state.gameState?.player?.ships?.[0];

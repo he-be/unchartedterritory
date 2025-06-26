@@ -1,4 +1,17 @@
 import { test, expect, Page } from '@playwright/test';
+import type { GameState, TradeOpportunity } from '../src/types/game';
+
+// Type for the game store
+interface GameStore {
+  gameState: GameState | null;
+  selectedShipId: string | null;
+  selectedSectorId: string | null;
+  tradeOpportunities: TradeOpportunity[] | null;
+  isLoading: boolean;
+  error: string | null;
+  pollingInterval: NodeJS.Timeout | null;
+  getState: () => GameStore;
+}
 
 // Helper to wait for the game to load
 async function waitForGameLoad(page: Page) {
@@ -84,7 +97,7 @@ test.describe('Coordinate System Debug', () => {
     // Evaluate JavaScript in the page to get game state
     const gameState = await page.evaluate(() => {
       // Access the game state from window if available
-      const gameStore = (window as any).gameStore;
+      const gameStore = (window as Window & { gameStore?: GameStore }).gameStore;
       if (gameStore && gameStore.getState) {
         const state = gameStore.getState();
         return {
@@ -120,7 +133,11 @@ test.describe('Coordinate System Debug', () => {
         canvasSize: { width: canvas.width, height: canvas.height },
         scale: 0.08,
         worldBounds: { min: -5000, max: 5000 },
-        conversions: [] as any[]
+        conversions: [] as {
+          screen: { x: number; y: number };
+          world: { x: number; y: number };
+          backToScreen: { x: number; y: number };
+        }[]
       };
 
       // Test coordinate conversions
@@ -163,11 +180,11 @@ test.describe('Coordinate System Debug', () => {
       if (!ctx) return;
 
       // Get game state
-      const gameStore = (window as any).gameStore;
+      const gameStore = (window as Window & { gameStore?: GameStore }).gameStore;
       if (!gameStore || !gameStore.getState) return;
       
       const state = gameStore.getState();
-      const sector = state.gameState?.sectors?.find((s: any) => s.id === state.selectedSectorId);
+      const sector = state.gameState?.sectors?.find((s: { id: string }) => s.id === state.selectedSectorId);
       
       if (!sector) return;
 
@@ -195,7 +212,7 @@ test.describe('Coordinate System Debug', () => {
         ctx.fillStyle = 'yellow';
         ctx.font = '12px monospace';
         
-        sector.stations.forEach((station: any) => {
+        sector.stations.forEach((station: { position: { x: number; y: number } }) => {
           const screenX = (station.position.x * 0.08) + canvas.width / 2;
           const screenY = (station.position.y * 0.08) + canvas.height / 2;
           
