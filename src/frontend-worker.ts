@@ -61,7 +61,21 @@ export default {
     }
     
     // Serve static assets using the new Static Assets API
-    // The SPA routing is handled automatically by not_found_handling = "single-page-application"
-    return env.ASSETS.fetch(request);
+    // Handle SPA routing manually
+    try {
+      // Try to serve the requested file
+      const response = await env.ASSETS.fetch(request);
+      
+      // If file not found and it's not an API request, serve index.html for SPA routing
+      if (response.status === 404 && !url.pathname.startsWith('/api/')) {
+        const indexRequest = new Request(new URL('/index.html', request.url));
+        return env.ASSETS.fetch(indexRequest);
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('Assets fetch error:', error);
+      return new Response('Asset fetch failed', { status: 500 });
+    }
   },
 };
