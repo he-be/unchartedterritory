@@ -1,21 +1,14 @@
 // Frontend Worker - Serves React app and proxies API calls
 import { getAssetFromKV } from '@cloudflare/kv-asset-handler';
 
-interface KVNamespace {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
-}
-
-interface ExecutionContext {
-  waitUntil(promise: Promise<any>): void;
-}
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Env {
-  __STATIC_CONTENT: KVNamespace;
+  __STATIC_CONTENT: any;
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
     const url = new URL(request.url);
     
     // Handle API requests - proxy to backend worker
