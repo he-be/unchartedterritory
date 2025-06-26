@@ -17,11 +17,25 @@ export default {
     if (url.pathname.startsWith('/api/')) {
       const backendUrl = 'https://unchartedterritory.masahiro-hibi.workers.dev' + url.pathname + url.search;
       
-      return fetch(backendUrl, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-      });
+      try {
+        const response = await fetch(backendUrl, {
+          method: request.method,
+          headers: request.headers,
+          body: request.body,
+        });
+        return response;
+      } catch (error) {
+        return new Response(JSON.stringify({
+          error: 'Proxy failed',
+          message: error.message,
+          backendUrl: backendUrl,
+          originalUrl: url.toString(),
+          method: request.method
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
     
     // Debug info
@@ -31,6 +45,8 @@ export default {
         hasAssets: !!env.ASSETS,
         url: url.toString(),
         pathname: url.pathname,
+        method: request.method,
+        isApiPath: url.pathname.startsWith('/api/'),
         message: 'Using new Static Assets API'
       }), {
         headers: { 'Content-Type': 'application/json' }
