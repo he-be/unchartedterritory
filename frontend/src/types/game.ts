@@ -1,16 +1,16 @@
-// Core game data structures for Uncharted Territory
-
 export interface Vector2 {
   x: number;
   y: number;
 }
 
+export type CargoClass = 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'ST';
+
 export interface Ware {
   id: string;
   name: string;
   category: 'raw' | 'intermediate' | 'finished';
-  cargoClass: 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'ST';
-  cargoSize: number; // S=1, M=5, L=10, XL=50, XXL=100, ST=1000
+  cargoClass: CargoClass;
+  cargoSize: number;
   basePrice: number;
 }
 
@@ -29,14 +29,14 @@ export interface Station {
   position: Vector2;
   sectorId: string;
   wares: WareStock[];
-  produces?: string[]; // ware IDs this station produces
-  consumes?: string[]; // ware IDs this station consumes
+  produces?: string[];
+  consumes?: string[];
 }
 
 export interface Gate {
   id: string;
   position: Vector2;
-  connectsTo: string; // sector ID
+  connectsTo: string;
 }
 
 export interface Sector {
@@ -45,7 +45,25 @@ export interface Sector {
   discovered: boolean;
   stations: Station[];
   gates: Gate[];
-  asteroids: Vector2[]; // for future mining
+  asteroids: Vector2[];
+}
+
+export interface ShipCargo {
+  wareId: string;
+  quantity: number;
+}
+
+export interface ShipCommand {
+  type: 'move' | 'explore' | 'trade';
+  target?: string;
+  parameters?: {
+    action?: 'buy' | 'sell';
+    wareId?: string;
+    quantity?: number;
+    position?: Vector2;
+    x?: number;
+    y?: number;
+  };
 }
 
 export interface Ship {
@@ -55,25 +73,12 @@ export interface Ship {
   position: Vector2;
   sectorId: string;
   maxSpeed: number;
-  cargoClass: 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'ST';
+  cargoClass: CargoClass;
   cargoCapacity: number;
-  cargo: { wareId: string; quantity: number }[];
-  currentCommand?: ShipCommand | undefined;
+  cargo: ShipCargo[];
+  currentCommand?: ShipCommand;
   isMoving: boolean;
-  destination?: Vector2 | undefined;
-}
-
-export interface ShipCommand {
-  type: 'move' | 'explore' | 'trade';
-  target?: string; // station ID or sector ID
-  parameters?: {
-    action?: 'buy' | 'sell';
-    wareId?: string;
-    quantity?: number;
-    position?: Vector2;
-    x?: number;
-    y?: number;
-  };
+  destination?: Vector2;
 }
 
 export interface Player {
@@ -88,13 +93,28 @@ export interface GameState {
   player: Player;
   sectors: Sector[];
   wares: Ware[];
-  gameTime: number; // in seconds
-  lastUpdate: number; // timestamp
+  gameTime: number;
+  lastUpdate: number;
 }
 
 export interface GameEvent {
   timestamp: number;
   type: 'discovery' | 'trade' | 'movement' | 'production';
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
+}
+
+export interface TradeOpportunity {
+  wareId: string;
+  from: {
+    stationId: string;
+    sectorId: string;
+    price: number;
+  };
+  to: {
+    stationId: string;
+    sectorId: string;
+    price: number;
+  };
+  profitMargin: number;
 }

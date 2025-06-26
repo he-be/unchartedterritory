@@ -140,7 +140,7 @@ function createSector(id: string, name: string): Sector {
   return sector;
 }
 
-export function generateUniverse(): GameState {
+export function generateUniverse(playerName: string = 'Commander'): GameState {
   const sectors: Sector[] = [];
   
   // Create sectors with interesting names
@@ -212,7 +212,7 @@ export function generateUniverse(): GameState {
   };
 
   const player: Player = {
-    name: 'Commander',
+    name: playerName,
     credits: 100000,
     ships: [scoutShip],
     discoveredSectors: [startingSector.id]

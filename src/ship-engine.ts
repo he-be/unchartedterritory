@@ -63,8 +63,8 @@ export class ShipEngine {
       } else if (gate) {
         targetPosition = gate.position;
       }
-    } else if (command.parameters?.position) {
-      targetPosition = command.parameters.position;
+    } else if (command.parameters?.x !== undefined && command.parameters?.y !== undefined) {
+      targetPosition = { x: command.parameters.x, y: command.parameters.y };
     }
 
     if (targetPosition) {
@@ -128,9 +128,9 @@ export class ShipEngine {
 
     const { action, wareId, quantity } = command.parameters || {};
     
-    if (action === 'buy') {
+    if (action === 'buy' && wareId && quantity !== undefined) {
       this.buyWare(ship, station, wareId, quantity, gameState, events);
-    } else if (action === 'sell') {
+    } else if (action === 'sell' && wareId && quantity !== undefined) {
       this.sellWare(ship, station, wareId, quantity, gameState, events);
     }
   }
@@ -282,6 +282,8 @@ export class ShipEngine {
         // Handle arrival
         if (ship.currentCommand?.type === 'explore') {
           this.handleGateArrival(ship, gameState, events);
+        } else if (ship.currentCommand?.type === 'move' && ship.currentCommand.target) {
+          this.handleMoveArrival(ship, gameState, events);
         }
 
         events.push({
@@ -296,6 +298,48 @@ export class ShipEngine {
     });
 
     return events;
+  }
+
+  private static handleMoveArrival(ship: Ship, gameState: GameState, events: GameEvent[]): void {
+    const currentSector = gameState.sectors.find(s => s.id === ship.sectorId);
+    if (!currentSector || !ship.currentCommand?.target) return;
+
+    const targetGate = currentSector.gates.find(g => g.id === ship.currentCommand?.target);
+    if (targetGate && this.getDistance(ship.position, targetGate.position) < 100) {
+      // Ship reached a gate - travel through it
+      const targetSector = gameState.sectors.find(s => s.id === targetGate.connectsTo);
+      if (targetSector) {
+        ship.sectorId = targetSector.id;
+        
+        // Find the corresponding gate in the target sector
+        const returnGate = targetSector.gates.find(g => g.connectsTo === currentSector.id);
+        if (returnGate) {
+          ship.position = { ...returnGate.position };
+        } else {
+          ship.position = { x: 0, y: 0 };
+        }
+
+        // Discover the sector if not already discovered
+        if (!gameState.player.discoveredSectors.includes(targetSector.id)) {
+          targetSector.discovered = true;
+          gameState.player.discoveredSectors.push(targetSector.id);
+          
+          events.push({
+            timestamp: Date.now(),
+            type: 'discovery',
+            message: `${ship.name} discovered new sector: ${targetSector.name}`,
+            details: { shipId: ship.id, sectorId: targetSector.id }
+          });
+        }
+
+        events.push({
+          timestamp: Date.now(),
+          type: 'movement',
+          message: `${ship.name} traveled to ${targetSector.name}`,
+          details: { shipId: ship.id, fromSector: currentSector.id, toSector: targetSector.id }
+        });
+      }
+    }
   }
 
   private static handleGateArrival(ship: Ship, gameState: GameState, events: GameEvent[]): void {
