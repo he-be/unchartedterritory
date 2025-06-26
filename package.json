@@ -15,11 +15,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint . --ext .ts --fix",
+    "lint": "eslint . --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
     "precommit": "npm run lint && npm run typecheck && npm run test"
   },
-  "keywords": ["typescript", "fullstack", "cloudflare-workers", "claude-code"],
+  "keywords": [
+    "typescript",
+    "fullstack",
+    "cloudflare-workers",
+    "claude-code"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -33,6 +38,8 @@
     "@typescript-eslint/parser": "^6.0.0",
     "@vitest/coverage-v8": "^1.6.1",
     "eslint": "^8.0.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
     "prettier": "^3.0.0",
     "supertest": "^7.1.1",
     "ts-node": "^10.0.0",
