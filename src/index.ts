@@ -7,7 +7,7 @@ import { EconomicEngine } from './economic-engine';
 import { ShipEngine } from './ship-engine';
 
 export const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
 app.use(express.json());
 app.use(express.static('public')); // For future frontend
@@ -18,20 +18,12 @@ const gameEvents = new Map<string, GameEvent[]>();
 
 // Game lifecycle endpoints
 app.post('/api/game/new', (req, res) => {
-  const gameState = generateUniverse();
+  const { playerName } = req.body;
+  const gameState = generateUniverse(playerName);
   gameStates.set(gameState.id, gameState);
   gameEvents.set(gameState.id, []);
 
-  return res.status(201).json({
-    gameId: gameState.id,
-    message: 'New game created',
-    initialState: {
-      playerId: gameState.player.name,
-      credits: gameState.player.credits,
-      startingSector: gameState.sectors.find(s => s.discovered)?.name,
-      shipCount: gameState.player.ships.length
-    }
-  });
+  return res.status(201).json(gameState);
 });
 
 app.get('/api/game/:gameId/state', (req, res) => {
@@ -42,21 +34,20 @@ app.get('/api/game/:gameId/state', (req, res) => {
     return res.status(404).json({ error: 'Game not found' });
   }
 
-  // Update economy before returning state
+  // Update economy and ship movement before returning state
+  const now = Date.now();
+  const deltaTime = (now - gameState.lastUpdate) / 1000; // Convert to seconds
+  gameState.lastUpdate = now;
+  gameState.gameTime += deltaTime;
+  
   const economicEvents = EconomicEngine.updateEconomy(gameState);
-  const movementEvents = ShipEngine.updateShipMovement(gameState, 1); // 1 second delta
+  const movementEvents = ShipEngine.updateShipMovement(gameState, deltaTime);
 
   const events = gameEvents.get(gameId) || [];
   events.push(...economicEvents, ...movementEvents);
   gameEvents.set(gameId, events);
 
-  return res.json({
-    gameId: gameState.id,
-    gameTime: gameState.gameTime,
-    player: gameState.player,
-    discoveredSectors: gameState.sectors.filter(s => s.discovered),
-    recentEvents: events.slice(-10) // Last 10 events
-  });
+  return res.json(gameState);
 });
 
 // Sector and exploration endpoints

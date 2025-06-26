@@ -1,0 +1,109 @@
+.sector-map {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.sector-header {
+  background: #1a1a1a;
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sector-header h2 {
+  margin: 0;
+  color: #4a9eff;
+}
+
+.sector-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sector-tab {
+  padding: 0.5rem 1rem;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sector-tab:hover {
+  border-color: #4a9eff;
+  color: #e0e0e0;
+}
+
+.sector-tab.active {
+  background: #4a9eff;
+  border-color: #4a9eff;
+  color: white;
+}
+
+.sector-canvas {
+  flex: 1;
+  cursor: crosshair;
+}
+
+.no-sector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.command-menu {
+  position: absolute;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 10;
+}
+
+.command-menu button {
+  padding: 0.5rem 1rem;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.command-menu button:hover {
+  background: #4a9eff;
+  border-color: #4a9eff;
+  color: white;
+}
+
+.station-tooltip {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 0.75rem;
+  pointer-events: none;
+}
+
+.station-tooltip h4 {
+  margin: 0 0 0.5rem 0;
+  color: #4a9eff;
+}
+
+.station-tooltip p {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+  color: #888;
+}

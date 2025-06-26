@@ -345,7 +345,7 @@ async function handleTrade(gameId: string, shipId: string, request: Request, cor
   const command: ShipCommand = {
     type: 'trade',
     target: stationId,
-    parameters: { action, wareId, quantity }
+    parameters: { action: action as 'buy' | 'sell', wareId, quantity }
   };
 
   const events = ShipEngine.executeCommand(ship, command, gameState);

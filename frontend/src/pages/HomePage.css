@@ -1,0 +1,88 @@
+.home-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 2rem;
+}
+
+.home-page h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  color: #4a9eff;
+}
+
+.subtitle {
+  font-size: 1.2rem;
+  color: #888;
+  margin-bottom: 3rem;
+}
+
+.game-options {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.option-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 2rem;
+  min-width: 300px;
+}
+
+.option-card h2 {
+  margin-bottom: 1rem;
+  color: #4a9eff;
+}
+
+.option-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.option-card input {
+  padding: 0.75rem;
+  background: #0a0a0a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 1rem;
+}
+
+.option-card input:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
+.option-card button {
+  background: #4a9eff;
+  color: white;
+  border: none;
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.option-card button:hover:not(:disabled) {
+  background: #357abd;
+}
+
+.option-card button:disabled {
+  background: #333;
+  cursor: not-allowed;
+}
+
+.error-message {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #ff4444;
+  color: white;
+  border-radius: 4px;
+}

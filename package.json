@@ -8,6 +8,8 @@
     "build:worker": "tsc src/worker.ts --outDir dist --target ES2022 --moduleResolution bundler --allowSyntheticDefaultImports",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "dev:backend": "ts-node src/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
     "dev:worker": "wrangler dev src/worker.ts",
     "deploy": "wrangler deploy",
     "test": "vitest run",
