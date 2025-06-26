@@ -4,7 +4,7 @@ import { getAssetFromKV, mapRequestToAsset } from '@cloudflare/kv-asset-handler'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Env {
   __STATIC_CONTENT: any;
-  __STATIC_CONTENT_MANIFEST: string;
+  __STATIC_CONTENT_MANIFEST?: string;
 }
 
 export default {
@@ -39,6 +39,8 @@ export default {
     
     try {
       // Serve static assets
+      const manifest = env.__STATIC_CONTENT_MANIFEST ? JSON.parse(env.__STATIC_CONTENT_MANIFEST) : {};
+      
       return await getAssetFromKV(
         {
           request,
@@ -48,7 +50,7 @@ export default {
         },
         {
           ASSET_NAMESPACE: env.__STATIC_CONTENT,
-          ASSET_MANIFEST: JSON.parse(env.__STATIC_CONTENT_MANIFEST),
+          ASSET_MANIFEST: manifest,
           mapRequestToAsset: mapRequestToAsset,
         }
       );
@@ -56,6 +58,7 @@ export default {
       // If asset not found, return index.html for SPA routing
       try {
         const indexRequest = new Request(`${url.origin}/index.html`, request);
+        const manifest = env.__STATIC_CONTENT_MANIFEST ? JSON.parse(env.__STATIC_CONTENT_MANIFEST) : {};
         
         return await getAssetFromKV(
           {
@@ -66,11 +69,11 @@ export default {
           },
           {
             ASSET_NAMESPACE: env.__STATIC_CONTENT,
-            ASSET_MANIFEST: JSON.parse(env.__STATIC_CONTENT_MANIFEST),
+            ASSET_MANIFEST: manifest,
           }
         );
       } catch (e) {
-        return new Response(`Error: ${String(e)}. Available keys in KV: Unable to list`, { 
+        return new Response(`Error: ${String(e)}. Trying to access: ${url.pathname}`, { 
           status: 500,
           headers: { 'Content-Type': 'text/plain' }
         });
