@@ -11,7 +11,7 @@
     "dev:backend": "ts-node src/index.ts",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:worker": "wrangler dev src/worker.ts",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env=\"\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
