@@ -1,0 +1,10 @@
+name = "unchartedterritory-backend"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+# account_id will be read from CLOUDFLARE_ACCOUNT_ID environment variable
+
+# Backend worker is private - no public routes except for health check
+# API access is only through Service Bindings from frontend worker
+
+[env.staging]
+name = "unchartedterritory-backend-staging"

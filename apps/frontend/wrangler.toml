@@ -1,0 +1,21 @@
+name = "unchartedterritory-frontend"
+main = "src/index.ts"
+compatibility_date = "2024-09-19"
+
+# Static assets configuration
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Service Binding to backend worker
+[[services]]
+binding = "API_BACKEND"
+service = "unchartedterritory-backend"
+
+[env.staging]
+name = "unchartedterritory-frontend-staging"
+
+# Staging environment uses staging backend
+[[env.staging.services]]
+binding = "API_BACKEND"
+service = "unchartedterritory-backend-staging"
