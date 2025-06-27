@@ -43,7 +43,7 @@ jobs:
         uses: davelosert/vitest-coverage-report-action@v2
       
       - name: Build for Cloudflare Workers
-        run: npm run build:worker
+        run: npm run build:backend
 
       - name: All checks passed
         if: success()
@@ -72,7 +72,7 @@ jobs:
         run: cd frontend && npm ci
       
       - name: Build backend for Cloudflare Workers
-        run: npm run build:worker
+        run: npm run build:backend
       
       - name: Build frontend worker for Cloudflare Workers
         run: npm run build:frontend-worker
@@ -80,15 +80,8 @@ jobs:
       - name: Build frontend for Cloudflare Workers
         run: npm run build:frontend
       
-      - name: Deploy backend to staging
+      - name: Deploy to staging (backend → frontend order required for Service Bindings)
         run: npm run deploy:staging
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PR_NUMBER: ${{ github.event.number }}
-      
-      - name: Deploy frontend to staging
-        run: npm run deploy:frontend-staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -148,7 +141,7 @@ jobs:
         run: cd frontend && npm ci
       
       - name: Build backend for Cloudflare Workers
-        run: npm run build:worker
+        run: npm run build:backend
       
       - name: Build frontend worker for Cloudflare Workers
         run: npm run build:frontend-worker
@@ -156,14 +149,8 @@ jobs:
       - name: Build frontend for Cloudflare Workers
         run: npm run build:frontend
       
-      - name: Deploy backend to Cloudflare Workers
+      - name: Deploy to production (backend → frontend order required for Service Bindings)
         run: npm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      
-      - name: Deploy frontend to Cloudflare Workers
-        run: npm run deploy:frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
