@@ -64,6 +64,55 @@ export class ShipEngine {
         targetPosition = station.position;
       } else if (gate) {
         targetPosition = gate.position;
+      } else {
+        // Station/gate not found in current sector - search all sectors for cross-sector movement
+        const targetStationInfo = this.findStationInAllSectors(command.target, gameState);
+        if (targetStationInfo && targetStationInfo.sectorId !== ship.sectorId) {
+          // This is a cross-sector station movement - need to navigate to target sector first
+          const galaxyRoute = GalaxyNavigation.findGalaxyRoute(gameState, ship.sectorId, targetStationInfo.sectorId);
+          if (galaxyRoute && galaxyRoute.steps.length > 0) {
+            // Add commands to navigate to the target sector
+            galaxyRoute.steps.forEach(step => {
+              const moveCommand: ShipCommand = {
+                type: 'move',
+                target: step.gateId
+              };
+              CommandQueue.addCommand(ship, moveCommand);
+            });
+            
+            // Add final command to move to the station in the target sector
+            const finalMoveCommand: ShipCommand = {
+              type: 'move',
+              target: command.target
+            };
+            CommandQueue.addCommand(ship, finalMoveCommand);
+            
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name} planning cross-sector route to station ${command.target} in ${targetStationInfo.sectorId}`,
+              details: { 
+                shipId: ship.id, 
+                targetStation: command.target,
+                targetSector: targetStationInfo.sectorId, 
+                routeSteps: galaxyRoute.steps.length
+              }
+            });
+            
+            return;
+          } else {
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name}: Cannot find route to station ${command.target} in sector ${targetStationInfo.sectorId}`,
+              details: { shipId: ship.id, targetStation: command.target, targetSector: targetStationInfo.sectorId }
+            });
+            return;
+          }
+        } else if (targetStationInfo && targetStationInfo.sectorId === ship.sectorId) {
+          // Station found in current sector but wasn't found in initial search - shouldn't happen
+          targetPosition = targetStationInfo.station.position;
+        }
       }
     } else if (command.parameters?.x !== undefined && command.parameters?.y !== undefined) {
       const targetCoordinates = { x: command.parameters.x, y: command.parameters.y };
@@ -319,6 +368,19 @@ export class ShipEngine {
       const ware = WARES.find(w => w.id === cargo.wareId);
       return total + (cargo.quantity * (ware?.cargoSize || 1));
     }, 0);
+  }
+
+  /**
+   * Find a station by ID across all sectors in the game
+   */
+  private static findStationInAllSectors(stationId: string, gameState: GameState): { station: Station; sectorId: string } | null {
+    for (const sector of gameState.sectors) {
+      const station = sector.stations.find(s => s.id === stationId);
+      if (station) {
+        return { station, sectorId: sector.id };
+      }
+    }
+    return null;
   }
 
   /**

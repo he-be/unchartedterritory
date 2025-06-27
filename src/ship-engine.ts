@@ -102,30 +102,53 @@ export class ShipEngine {
             return;
           }
         } else {
-          // Check if target is a station in another sector
-          const targetStation = this.findStationInAllSectors(command.target, gameState);
-          if (targetStation) {
-            // Generate auto-move command to the station's sector
-            const autoMoveCommand = CommandQueue.createAutoMoveCommand(targetStation.sectorId);
-            CommandQueue.addCommand(ship, autoMoveCommand);
-            
-            // Add move command to the station after reaching the sector
-            const moveToStationCommand: ShipCommand = {
-              type: 'move',
-              target: targetStation.station.id
-            };
-            CommandQueue.addCommand(ship, moveToStationCommand);
-            
-            events.push({
-              timestamp: Date.now(),
-              type: 'movement',
-              message: `${ship.name} planning route to ${targetStation.station.name} in ${targetStation.sectorName}`,
-              details: { shipId: ship.id, targetSector: targetStation.sectorId, targetStation: targetStation.station.id }
-            });
-            
-            // Start processing the command queue
-            CommandQueue.processQueue(ship, gameState);
-            return;
+          // Station/gate not found in current sector - search all sectors for cross-sector movement
+          const targetStationInfo = this.findStationInAllSectors(command.target, gameState);
+          if (targetStationInfo && targetStationInfo.sectorId !== ship.sectorId) {
+            // This is a cross-sector station movement - need to navigate to target sector first
+            const galaxyRoute = GalaxyNavigation.findGalaxyRoute(gameState, ship.sectorId, targetStationInfo.sectorId);
+            if (galaxyRoute && galaxyRoute.steps.length > 0) {
+              // Add commands to navigate to the target sector
+              galaxyRoute.steps.forEach(step => {
+                const moveCommand: ShipCommand = {
+                  type: 'move',
+                  target: step.gateId
+                };
+                CommandQueue.addCommand(ship, moveCommand);
+              });
+              
+              // Add final command to move to the station in the target sector
+              const finalMoveCommand: ShipCommand = {
+                type: 'move',
+                target: command.target
+              };
+              CommandQueue.addCommand(ship, finalMoveCommand);
+              
+              events.push({
+                timestamp: Date.now(),
+                type: 'movement',
+                message: `${ship.name} planning cross-sector route to station ${command.target} in ${targetStationInfo.sectorId}`,
+                details: { 
+                  shipId: ship.id, 
+                  targetStation: command.target,
+                  targetSector: targetStationInfo.sectorId, 
+                  routeSteps: galaxyRoute.steps.length
+                }
+              });
+              
+              return;
+            } else {
+              events.push({
+                timestamp: Date.now(),
+                type: 'movement',
+                message: `${ship.name}: Cannot find route to station ${command.target} in sector ${targetStationInfo.sectorId}`,
+                details: { shipId: ship.id, targetStation: command.target, targetSector: targetStationInfo.sectorId }
+              });
+              return;
+            }
+          } else if (targetStationInfo && targetStationInfo.sectorId === ship.sectorId) {
+            // Station found in current sector but wasn't found in initial search - shouldn't happen
+            targetPosition = targetStationInfo.station.position;
           }
         }
       }
@@ -207,19 +230,6 @@ export class ShipEngine {
     }
   }
 
-  private static findStationInAllSectors(stationId: string, gameState: GameState): { station: Station; sectorId: string; sectorName: string } | null {
-    for (const sector of gameState.sectors) {
-      const station = sector.stations.find(s => s.id === stationId);
-      if (station) {
-        return {
-          station,
-          sectorId: sector.id,
-          sectorName: sector.name
-        };
-      }
-    }
-    return null;
-  }
 
   private static startExploration(ship: Ship, gameState: GameState, events: GameEvent[]): void {
     const currentSector = gameState.sectors.find(s => s.id === ship.sectorId);
@@ -397,6 +407,19 @@ export class ShipEngine {
       const ware = WARES.find(w => w.id === cargo.wareId);
       return total + (cargo.quantity * (ware?.cargoSize || 1));
     }, 0);
+  }
+
+  /**
+   * Find a station by ID across all sectors in the game
+   */
+  private static findStationInAllSectors(stationId: string, gameState: GameState): { station: Station; sectorId: string } | null {
+    for (const sector of gameState.sectors) {
+      const station = sector.stations.find(s => s.id === stationId);
+      if (station) {
+        return { station, sectorId: sector.id };
+      }
+    }
+    return null;
   }
 
   /**
