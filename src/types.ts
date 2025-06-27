@@ -85,10 +85,31 @@ export interface Player {
   discoveredSectors: string[];
 }
 
+export interface GalaxyMap {
+  sectors: { [sectorId: string]: GalaxySectorNode };
+  connections: GalaxyConnection[];
+}
+
+export interface GalaxySectorNode {
+  id: string;
+  name: string;
+  position: Vector2; // Position on galaxy map
+  discovered: boolean;
+}
+
+export interface GalaxyConnection {
+  id: string; // Unique connection ID (gate pair)
+  sectorA: string;
+  sectorB: string;
+  gateAId: string; // Gate ID in sector A
+  gateBId: string; // Gate ID in sector B
+}
+
 export interface GameState {
   id: string;
   player: Player;
   sectors: Sector[];
+  galaxyMap: GalaxyMap;
   wares: Ware[];
   gameTime: number; // in seconds
   lastUpdate: number; // timestamp

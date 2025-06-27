@@ -1,6 +1,6 @@
 // World generation system for Uncharted Territory
 
-import { GameState, Sector, Station, Ware, Vector2, Player, Ship } from './types';
+import { GameState, Sector, Station, Ware, Vector2, Player, Ship, GalaxyMap, GalaxySectorNode, GalaxyConnection } from './types';
 
 export const WARES: Ware[] = [
   // Raw materials
@@ -233,12 +233,63 @@ export function generateUniverse(playerName: string = 'Commander'): GameState {
     discoveredSectors: [startingSector.id]
   };
 
+  // Generate galaxy map
+  const galaxyMap = generateGalaxyMap(sectors);
+
   return {
     id: `game_${Date.now()}`,
     player,
     sectors,
+    galaxyMap,
     wares: WARES,
     gameTime: 0,
     lastUpdate: Date.now()
   };
+}
+
+function generateGalaxyMap(sectors: Sector[]): GalaxyMap {
+  const galaxySectors: { [sectorId: string]: GalaxySectorNode } = {};
+  const connections: GalaxyConnection[] = [];
+  
+  // Create galaxy sector nodes
+  sectors.forEach((sector, index) => {
+    galaxySectors[sector.id] = {
+      id: sector.id,
+      name: sector.name,
+      position: {
+        x: (index % 3) * 200,
+        y: Math.floor(index / 3) * 200
+      },
+      discovered: sector.discovered
+    };
+  });
+  
+  // Create connections based on gates
+  const processedConnections = new Set<string>();
+  
+  sectors.forEach(sector => {
+    sector.gates.forEach(gate => {
+      const connectionKey = [sector.id, gate.connectsTo].sort().join('-');
+      
+      if (!processedConnections.has(connectionKey)) {
+        processedConnections.add(connectionKey);
+        
+        // Find the return gate
+        const targetSector = sectors.find(s => s.id === gate.connectsTo);
+        const returnGate = targetSector?.gates.find(g => g.connectsTo === sector.id);
+        
+        if (returnGate) {
+          connections.push({
+            id: connectionKey,
+            sectorA: sector.id,
+            sectorB: gate.connectsTo,
+            gateAId: gate.id,
+            gateBId: returnGate.id
+          });
+        }
+      }
+    });
+  });
+  
+  return { sectors: galaxySectors, connections };
 }

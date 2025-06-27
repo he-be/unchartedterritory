@@ -62,6 +62,17 @@ describe('CommandQueue', () => {
           asteroids: []
         }
       ],
+      galaxyMap: {
+        sectors: {
+          'sector1': { id: 'sector1', name: 'Sector 1', position: { x: 0, y: 0 }, discovered: true },
+          'sector2': { id: 'sector2', name: 'Sector 2', position: { x: 200, y: 0 }, discovered: true },
+          'sector3': { id: 'sector3', name: 'Sector 3', position: { x: 400, y: 0 }, discovered: true }
+        },
+        connections: [
+          { id: 'sector1-sector2', sectorA: 'sector1', sectorB: 'sector2', gateAId: 'gate1', gateBId: 'gate2a' },
+          { id: 'sector2-sector3', sectorA: 'sector2', sectorB: 'sector3', gateAId: 'gate2b', gateBId: 'gate3' }
+        ]
+      },
       wares: [],
       gameTime: 0,
       lastUpdate: Date.now()

@@ -2,6 +2,7 @@
 
 import { GameState, Ship, ShipCommand, Vector2, GameEvent, Station } from './types';
 import { CommandQueue } from './command-queue';
+import { GalaxyNavigation } from './galaxy-navigation';
 
 export class ShipEngine {
   private static MOVEMENT_SPEED_MULTIPLIER = 100; // pixels per second
@@ -67,30 +68,65 @@ export class ShipEngine {
       } else if (gate) {
         targetPosition = gate.position;
       } else {
-        // Check if target is a station in another sector
-        const targetStation = this.findStationInAllSectors(command.target, gameState);
-        if (targetStation) {
-          // Generate auto-move command to the station's sector
-          const autoMoveCommand = CommandQueue.createAutoMoveCommand(targetStation.sectorId);
-          CommandQueue.addCommand(ship, autoMoveCommand);
-          
-          // Add move command to the station after reaching the sector
-          const moveToStationCommand: ShipCommand = {
-            type: 'move',
-            target: targetStation.station.id
-          };
-          CommandQueue.addCommand(ship, moveToStationCommand);
-          
-          events.push({
-            timestamp: Date.now(),
-            type: 'movement',
-            message: `${ship.name} planning route to ${targetStation.station.name} in ${targetStation.sectorName}`,
-            details: { shipId: ship.id, targetSector: targetStation.sectorId, targetStation: targetStation.station.id }
-          });
-          
-          // Start processing the command queue
-          CommandQueue.processQueue(ship, gameState);
-          return;
+        // Check if target is a gate in any sector
+        const gateInfo = GalaxyNavigation.findGateById(gameState, command.target);
+        if (gateInfo) {
+          // Target is a gate in another sector - navigate to that sector first
+          const galaxyRoute = GalaxyNavigation.findGalaxyRoute(gameState, ship.sectorId, gateInfo.sector.id);
+          if (galaxyRoute && galaxyRoute.steps.length > 0) {
+            // Add commands to navigate to the target gate's sector
+            galaxyRoute.steps.forEach(step => {
+              const moveCommand: ShipCommand = {
+                type: 'move',
+                target: step.gateId
+              };
+              CommandQueue.addCommand(ship, moveCommand);
+            });
+            
+            // Add final command to move to the target gate
+            const finalMoveCommand: ShipCommand = {
+              type: 'move',
+              target: command.target
+            };
+            CommandQueue.addCommand(ship, finalMoveCommand);
+            
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name} planning route to gate ${command.target} in ${gateInfo.sector.name}`,
+              details: { shipId: ship.id, targetSector: gateInfo.sector.id, targetGate: command.target }
+            });
+            
+            // Start processing the command queue
+            CommandQueue.processQueue(ship, gameState);
+            return;
+          }
+        } else {
+          // Check if target is a station in another sector
+          const targetStation = this.findStationInAllSectors(command.target, gameState);
+          if (targetStation) {
+            // Generate auto-move command to the station's sector
+            const autoMoveCommand = CommandQueue.createAutoMoveCommand(targetStation.sectorId);
+            CommandQueue.addCommand(ship, autoMoveCommand);
+            
+            // Add move command to the station after reaching the sector
+            const moveToStationCommand: ShipCommand = {
+              type: 'move',
+              target: targetStation.station.id
+            };
+            CommandQueue.addCommand(ship, moveToStationCommand);
+            
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name} planning route to ${targetStation.station.name} in ${targetStation.sectorName}`,
+              details: { shipId: ship.id, targetSector: targetStation.sectorId, targetStation: targetStation.station.id }
+            });
+            
+            // Start processing the command queue
+            CommandQueue.processQueue(ship, gameState);
+            return;
+          }
         }
       }
     } else if (command.parameters?.x !== undefined && command.parameters?.y !== undefined) {
@@ -376,6 +412,9 @@ export class ShipEngine {
           targetSector.discovered = true;
           gameState.player.discoveredSectors.push(targetSector.id);
           
+          // Update galaxy map
+          GalaxyNavigation.updateSectorDiscovered(gameState, targetSector.id);
+          
           events.push({
             timestamp: Date.now(),
             type: 'discovery',
@@ -408,6 +447,9 @@ export class ShipEngine {
       if (newSector) {
         newSector.discovered = true;
         gameState.player.discoveredSectors.push(newSector.id);
+        
+        // Update galaxy map
+        GalaxyNavigation.updateSectorDiscovered(gameState, newSector.id);
 
         events.push({
           timestamp: Date.now(),
