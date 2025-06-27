@@ -1,6 +1,7 @@
 // Ship movement and exploration engine for Uncharted Territory
 
 import { GameState, Ship, ShipCommand, Vector2, GameEvent, Station } from './types';
+import { CommandQueue } from './command-queue';
 
 export class ShipEngine {
   private static MOVEMENT_SPEED_MULTIPLIER = 100; // pixels per second
@@ -42,6 +43,9 @@ export class ShipEngine {
       case 'trade':
         this.executeTrade(ship, command, gameState, events);
         break;
+      case 'auto-move':
+        // auto-move commands are handled by CommandQueue
+        break;
     }
 
     return events;
@@ -54,7 +58,7 @@ export class ShipEngine {
     let targetPosition: Vector2 | undefined;
 
     if (command.target) {
-      // Moving to a specific station or gate
+      // First check current sector for station or gate
       const station = currentSector.stations.find(s => s.id === command.target);
       const gate = currentSector.gates.find(g => g.id === command.target);
       
@@ -62,6 +66,32 @@ export class ShipEngine {
         targetPosition = station.position;
       } else if (gate) {
         targetPosition = gate.position;
+      } else {
+        // Check if target is a station in another sector
+        const targetStation = this.findStationInAllSectors(command.target, gameState);
+        if (targetStation) {
+          // Generate auto-move command to the station's sector
+          const autoMoveCommand = CommandQueue.createAutoMoveCommand(targetStation.sectorId);
+          CommandQueue.addCommand(ship, autoMoveCommand);
+          
+          // Add move command to the station after reaching the sector
+          const moveToStationCommand: ShipCommand = {
+            type: 'move',
+            target: targetStation.station.id
+          };
+          CommandQueue.addCommand(ship, moveToStationCommand);
+          
+          events.push({
+            timestamp: Date.now(),
+            type: 'movement',
+            message: `${ship.name} planning route to ${targetStation.station.name} in ${targetStation.sectorName}`,
+            details: { shipId: ship.id, targetSector: targetStation.sectorId, targetStation: targetStation.station.id }
+          });
+          
+          // Start processing the command queue
+          CommandQueue.processQueue(ship, gameState);
+          return;
+        }
       }
     } else if (command.parameters?.x !== undefined && command.parameters?.y !== undefined) {
       targetPosition = { x: command.parameters.x, y: command.parameters.y };
@@ -79,6 +109,20 @@ export class ShipEngine {
         details: { shipId: ship.id, destination: targetPosition }
       });
     }
+  }
+
+  private static findStationInAllSectors(stationId: string, gameState: GameState): { station: Station; sectorId: string; sectorName: string } | null {
+    for (const sector of gameState.sectors) {
+      const station = sector.stations.find(s => s.id === stationId);
+      if (station) {
+        return {
+          station,
+          sectorId: sector.id,
+          sectorName: sector.name
+        };
+      }
+    }
+    return null;
   }
 
   private static startExploration(ship: Ship, gameState: GameState, events: GameEvent[]): void {
@@ -263,6 +307,11 @@ export class ShipEngine {
     const events: GameEvent[] = [];
 
     gameState.player.ships.forEach(ship => {
+      // Process command queue if no current movement
+      if (!ship.isMoving) {
+        CommandQueue.processQueue(ship, gameState);
+      }
+
       if (!ship.isMoving || !ship.destination) return;
 
       ship.position = this.moveTowards(
@@ -294,6 +343,9 @@ export class ShipEngine {
         });
 
         ship.currentCommand = undefined;
+        
+        // Process next command in queue after arrival
+        CommandQueue.processQueue(ship, gameState);
       }
     });
 
