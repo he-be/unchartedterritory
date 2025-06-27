@@ -120,16 +120,7 @@ function handleNewGame(corsHeaders: Record<string, string>): Response {
   gameStates.set(gameState.id, gameState);
   gameEvents.set(gameState.id, []);
 
-  return new Response(JSON.stringify({
-    gameId: gameState.id,
-    message: 'New game created',
-    initialState: {
-      playerId: gameState.player.name,
-      credits: gameState.player.credits,
-      startingSector: gameState.sectors.find(s => s.discovered)?.name,
-      shipCount: gameState.player.ships.length
-    }
-  }), {
+  return new Response(JSON.stringify(gameState), {
     status: 201,
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
