@@ -11,7 +11,15 @@ import './GamePage.css';
 function GamePage() {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
-  const { gameState, loadGame, selectedShipId, selectedSectorId } = useGameStore();
+  const { 
+    gameState, 
+    loadGame, 
+    selectedShipId, 
+    selectedSectorId,
+    connectToGame,
+    disconnectFromGame,
+    connectionStatus
+  } = useGameStore();
 
   useEffect(() => {
     if (!gameState && gameId) {
@@ -24,6 +32,23 @@ function GamePage() {
       navigate('/');
     }
   }, [gameState, navigate]);
+
+  // Handle WebSocket connection lifecycle
+  useEffect(() => {
+    if (gameId && connectionStatus === 'disconnected') {
+      // Try to establish WebSocket connection for real-time updates
+      connectToGame(gameId).catch((error) => {
+        console.warn('WebSocket connection failed, using HTTP fallback:', error);
+      });
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (connectionStatus === 'connected') {
+        disconnectFromGame();
+      }
+    };
+  }, [gameId, connectionStatus, connectToGame, disconnectFromGame]);
 
   if (!gameState) {
     return <div className="loading">Loading game...</div>;
