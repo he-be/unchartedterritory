@@ -49,6 +49,7 @@ curl http://localhost:3000/api/game/[gameId]/trade-opportunities
 
 ## 📝 開発
 
+### 開発コマンド
 ```bash
 npm run dev          # Express 開発サーバー (localhost:3000)
 npm run dev:worker   # Workers 開発サーバー
@@ -57,6 +58,31 @@ npm run test:coverage # カバレッジ生成
 npm run lint         # コード品質チェック
 npm run typecheck    # 型チェック
 ```
+
+### 開発ワークフロー
+
+このプロジェクトは **Git Flow + CI/CD** でPR駆動開発を行っています：
+
+1. **Feature Branch作成** → 2. **開発・テスト** → 3. **PR作成** → 4. **CI/CD自動チェック** → 5. **レビュー・マージ** → 6. **自動デプロイ**
+
+```bash
+# 1. 新機能開発開始
+git checkout -b feature/new-feature
+
+# 2. 開発・ローカルテスト
+npm test && npm run lint && npm run typecheck
+
+# 3. PR作成 (GitHub UI)
+git push origin feature/new-feature
+
+# 4. 自動チェック実行 ✅
+#    - ESLint, TypeScript, Tests, Coverage
+#    - すべて通過後にマージ可能
+
+# 5. main マージ後、自動デプロイ 🚀
+```
+
+**📖 詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) を参照**
 
 ## 📚 設計ドキュメント
 
