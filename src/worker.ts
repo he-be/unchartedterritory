@@ -144,13 +144,7 @@ function handleGameState(gameId: string, corsHeaders: Record<string, string>): R
   events.push(...economicEvents, ...movementEvents);
   gameEvents.set(gameId, events);
 
-  return new Response(JSON.stringify({
-    gameId: gameState.id,
-    gameTime: gameState.gameTime,
-    player: gameState.player,
-    discoveredSectors: gameState.sectors.filter(s => s.discovered),
-    recentEvents: events.slice(-10)
-  }), {
+  return new Response(JSON.stringify(gameState), {
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
   });
 }

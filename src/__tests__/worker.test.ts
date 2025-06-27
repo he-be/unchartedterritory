@@ -62,7 +62,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       expect(gameState.sectors).toBeDefined();
     });
 
-    test.skip('GET /api/game/:gameId/state should return game state', async () => {
+    test('GET /api/game/:gameId/state should return game state', async () => {
       // First create a game
       const createRequest = new Request('https://example.com/api/game/new', {
         method: 'POST',
@@ -82,7 +82,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       expect(json.id).toBe(gameId);
       expect(json.player.name).toBe('Commander');
       expect(json.player.ships).toHaveLength(1);
-      expect(json.discoveredSectors).toHaveLength(1);
+      expect(json.sectors.filter((s: any) => s.discovered)).toHaveLength(1);
     });
 
     test('GET /api/game/invalid/state should return 404', async () => {
@@ -110,7 +110,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       gameId = gameState.id;
     });
 
-    test.skip('GET /api/game/:gameId/sectors should return discovered sectors', async () => {
+    test('GET /api/game/:gameId/sectors should return discovered sectors', async () => {
       const request = new Request(`https://example.com/api/game/${gameId}/sectors`);
       const response = await worker.default.fetch(request);
       
@@ -125,7 +125,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       });
     });
 
-    test.skip('GET /api/game/:gameId/sectors/:sectorId should return sector details', async () => {
+    test('GET /api/game/:gameId/sectors/:sectorId should return sector details', async () => {
       // Get sectors first
       const sectorsRequest = new Request(`https://example.com/api/game/${gameId}/sectors`);
       const sectorsResponse = await worker.default.fetch(sectorsRequest);
@@ -144,7 +144,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
     });
   });
 
-  describe.skip('Ship Commands', () => {
+  describe('Ship Commands', () => {
     let gameId: string;
     let shipId: string;
     let stationId: string;
@@ -228,7 +228,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
     });
   });
 
-  describe.skip('Trading System', () => {
+  describe('Trading System', () => {
     let gameId: string;
 
     beforeEach(async () => {
