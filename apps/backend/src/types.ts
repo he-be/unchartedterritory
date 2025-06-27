@@ -59,12 +59,13 @@ export interface Ship {
   cargoCapacity: number;
   cargo: { wareId: string; quantity: number }[];
   currentCommand?: ShipCommand | undefined;
+  commandQueue: ShipCommand[];
   isMoving: boolean;
   destination?: Vector2 | undefined;
 }
 
 export interface ShipCommand {
-  type: 'move' | 'explore' | 'trade';
+  type: 'move' | 'explore' | 'trade' | 'auto-move';
   target?: string; // station ID or sector ID
   parameters?: {
     action?: 'buy' | 'sell';
@@ -73,6 +74,7 @@ export interface ShipCommand {
     position?: Vector2;
     x?: number;
     y?: number;
+    targetSectorId?: string; // for auto-move across sectors
   };
 }
 

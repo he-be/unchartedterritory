@@ -208,6 +208,7 @@ export function generateUniverse(playerName: string = 'Commander'): GameState {
     cargoClass: 'S',
     cargoCapacity: 10,
     cargo: [],
+    commandQueue: [],
     isMoving: false
   };
 
@@ -221,6 +222,7 @@ export function generateUniverse(playerName: string = 'Commander'): GameState {
     cargoClass: 'L',
     cargoCapacity: 50,
     cargo: [],
+    commandQueue: [],
     isMoving: false
   };
 
