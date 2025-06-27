@@ -1,6 +1,9 @@
 // GameSession Durable Object - Single source of truth for each game
 
-/// <reference path="./globals.d.ts" />
+// WebSocketPair global declaration for Cloudflare Workers
+declare const WebSocketPair: {
+  new (): [any, any];
+};
 
 import { 
   GameState, 
@@ -66,7 +69,6 @@ export class GameSession {
   }
 
   private async handleWebSocketUpgrade(): Promise<Response> {
-    // eslint-disable-next-line no-undef
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     
