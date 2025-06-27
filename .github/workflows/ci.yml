@@ -5,10 +5,13 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    types: [ opened, synchronize, reopened ]
 
 jobs:
-  build-and-test:
+  test:
+    name: Run Tests and Checks
     runs-on: self-hosted
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
@@ -42,10 +45,14 @@ jobs:
       - name: Build for Cloudflare Workers
         run: npm run build:worker
 
+      - name: All checks passed
+        if: success()
+        run: echo "✅ All tests, linting, type checking, and build completed successfully!"
+
   deploy:
     name: Deploy to Cloudflare Workers
     runs-on: self-hosted
-    needs: build-and-test
+    needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
