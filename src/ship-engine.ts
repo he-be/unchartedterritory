@@ -97,8 +97,7 @@ export class ShipEngine {
               details: { shipId: ship.id, targetSector: gateInfo.sector.id, targetGate: command.target }
             });
             
-            // Start processing the command queue
-            CommandQueue.processQueue(ship, gameState);
+            // Don't process queue here - let updateShipMovement handle it
             return;
           }
         } else {
@@ -198,8 +197,6 @@ export class ShipEngine {
             }
           });
           
-          // Don't start processing immediately - let caller decide when to process
-          // CommandQueue.processQueue(ship, gameState);
           return;
         } else {
           events.push({
@@ -471,8 +468,8 @@ export class ShipEngine {
 
     gameState.player.ships.forEach(ship => {
       // Process command queue if no current movement
-      if (!ship.isMoving) {
-        CommandQueue.processQueue(ship, gameState);
+      if (!ship.isMoving && !ship.currentCommand) {
+        CommandQueue.processQueue(ship, gameState, ShipEngine);
       }
 
       if (!ship.isMoving || !ship.destination) return;
@@ -508,7 +505,7 @@ export class ShipEngine {
         ship.currentCommand = undefined;
         
         // Process next command in queue after arrival
-        CommandQueue.processQueue(ship, gameState);
+        CommandQueue.processQueue(ship, gameState, ShipEngine);
       }
     });
 

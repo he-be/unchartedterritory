@@ -3,6 +3,8 @@
 
 import { Ship, ShipCommand, GameState } from './types';
 import { NavigationEngine } from './navigation-engine';
+// Import ShipEngine with type-only import to avoid circular dependency
+import type { ShipEngine as ShipEngineType } from './ship-engine';
 
 export class CommandQueue {
   /**
@@ -44,13 +46,20 @@ export class CommandQueue {
   /**
    * Process the command queue for a ship
    * If no current command, start the next queued command
+   * Note: ShipEngine parameter is passed to avoid circular dependency
    */
-  static processQueue(ship: Ship, gameState: GameState): void {
-    // If ship has no current command, start the next queued command
-    if (!ship.currentCommand && ship.commandQueue.length > 0) {
+  static processQueue(ship: Ship, gameState: GameState, ShipEngine?: typeof ShipEngineType): void {
+    // If ship has no current command and not moving, start the next queued command
+    if (!ship.currentCommand && !ship.isMoving && ship.commandQueue.length > 0) {
       const nextCommand = this.dequeueCommand(ship);
       if (nextCommand) {
-        this.startCommand(ship, nextCommand, gameState);
+        // If ShipEngine is provided, execute the command properly
+        if (ShipEngine) {
+          ShipEngine.executeCommand(ship, nextCommand, gameState);
+        } else {
+          // Fallback for auto-move commands that don't need ShipEngine
+          this.startCommand(ship, nextCommand, gameState);
+        }
       }
     }
   }

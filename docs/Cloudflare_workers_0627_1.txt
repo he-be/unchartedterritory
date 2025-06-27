@@ -1,0 +1,839 @@
+Cloudflare Workersにおけるゲームの状態同期アーキテクチャ設計
+
+
+
+
+エグゼクティブサマリー
+
+
+本レポートは、Cloudflare Workersプラットフォーム上でフロントエンドとバックエンドを分離したリアルタイムゲームアプリケーションを構築する際の、中心的な課題である「状態同期」を解決するためのアーキテクチャを段階的に詳述するものである。分析の結果、Cloudflareが提供するステートフルなサーバーレスコンピューティング技術であるDurable Objectsを、WebSocketおよびAlarms APIと組み合わせることが、この課題に対する正規かつ最も優れたアーキテクチャであると結論付ける。
+レポートはまず、静的アセットホスティングとAPIワーカーを分離する現代的なフルスタックアプリケーションの基礎的パターンを確立することから始める。次に、状態同期のための技術的選択肢を、非効率なポーリング方式から、より高度なWebSocket通信へと段階的に評価する。この過程で、標準的なステートレスワーカーにおけるWebSocketの根本的な課題である「水平方向の協調問題」を明らかにする。
+この課題の解決策として、Durable Objectsを「ゲームセッションの単一の信頼できる情報源（Single Source of Truth）」として活用するアーキテクチャを提示する。各ゲームマッチに対して一意のDurable Objectインスタンスを割り当てることで、状態の一貫性を保証し、スケーラブルな設計を実現する。さらに、WebSocket Hibernationによるコストとリソースの最適化、Alarms APIを用いたサーバー権威のゲームループ実装方法について、具体的なコード例を交えて詳細に解説する。
+最終的に、テスト、CI/CD、監視、セキュリティといった本番環境で求められる要件を網羅し、Durable Objectsを中核に据えた包括的なアーキテクチャ設計図を提示する。本レポートは、Cloudflare上で高性能かつスケーラブルなリアルタイムゲームを構築しようとする技術リーダーおよびシニア開発者に対し、明確で実践的な指針を提供することを目的とする。
+
+
+セクション1: 基礎アーキテクチャ：ゲームクライアントとサーバーの分離
+
+
+状態同期という複雑な問題に取り組む前に、まず現代的なフルスタックアプリケーションの基盤となるアーキテクチャをCloudflare上に確立する必要がある。ここでは、ユーザー向けのゲームクライアントとバックエンドロジックを適切に分離する方法を定義する。
+
+
+1.1. Workersにおける現代的なフルスタックパターン
+
+
+Cloudflareのプラットフォームは、静的アセットホスティング機能とサーバーレス関数（Workers）を組み合わせることで、フルスタックアプリケーションを構築するために意図的に設計されている 1。これはCloudflareが推奨するアーキテクチャパターンであり、フロントエンド（例：ReactやVueで構築されたSPA）を静的アセットとして配信し、バックエンドAPIを別のWorkerスクリプトとして実行する「分割」アーキテクチャを基本とする 3。この関心の分離は、フロントエンドとバックエンドのチームが独立して開発を進めることを可能にする、現代的な開発におけるベストプラクティスである 5。
+このアプローチは、すべてのロジックを単一のサーバーに集約するモノリシックな構成とは対照的であり、スケーラビリティとメンテナンス性の向上に寄与する。本レポートで扱う状態同期の問題は、この分割アーキテクチャを前提として議論を進める。
+
+
+1.2. フロントエンドの配信：wrangler.tomlにおける静的アセット設定
+
+
+このアーキテクチャの制御中枢となるのが、Wranglerの設定ファイルであるwrangler.toml（または.jsonc）である。このファイル内の[assets]ブロックは、ビルドされたフロントエンドアプリケーションを含むディレクトリを指定するために使用される 1。
+具体的な設定例を以下に示す。
+
+
+Ini, TOML
+
+
+
+
+# wrangler.toml
+name = "game-frontend-worker"
+main = "src/worker.js" # APIリクエストを処理するワーカーのエントリポイント
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./dist" # フロントエンドのビルド成果物（例：ViteやCreate React Appの出力）
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+この設定で重要なのはnot_found_handling = "single-page-application"である 1。これは、クライアントサイドでのルーティングを持つSPA（Single Page Application）にとって不可欠な設定であり、リクエストされたパスが静的ファイルに一致しない場合、
+index.htmlを返すように指示する。これにより、React RouterやVue RouterなどがブラウザのURLを制御し、ユーザーがページをリロードしても404エラーにならずにアプリケーションが正しく表示されることが保証される 9。
+
+
+1.3. バックエンドのエントリポイント：APIトラフィックの専用ワーカーへのルーティング
+
+
+デフォルトのルーティング動作では、リクエストされたURLパスが[assets]で指定されたディレクトリ内のファイルと一致する場合、その静的アセットがWorkerスクリプトを起動することなく直接配信される 1。これは効率的だが、
+/api/*のようなAPIエンドポイントまで静的アセットとして扱われてしまうと問題が生じる。
+API呼び出しが確実にWorkerスクリプトによって処理されるようにするためには、ルーティングを明示的に制御する必要がある。そのための重要な設定がrun_worker_firstである 11。このオプションを使用すると、特定のパスパターンに一致するリクエストに対して、静的アセットのチェックよりも先にWorkerスクリプトを実行させることができる 10。
+以下に、静的アセット配信と/api/*へのリクエストをWorkerで処理する構成を両立させるwrangler.tomlの設定例を示す。
+
+
+Ini, TOML
+
+
+
+
+# wrangler.toml
+name = "game-api-worker"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+binding = "ASSETS"
+run_worker_first = ["/api/*"] # /api/で始まるパスは常にワーカーを実行
+
+この設定により、/api/以外のパスへのリクエストはまず静的アセットとして解決され、一致するものがあればそれが返される。一方、/api/で始まるパスへのリクエストは、常にmainで指定されたWorkerスクリプトに渡され、APIロジックが実行される。これにより、単一のWorkerデプロイメント内でフロントエンドの配信とバックエンドAPIの提供をクリーンに分離できる。
+
+
+1.4. 内部通信：Service Bindingsによるバックエンドマイクロサービス
+
+
+複雑なゲームのバックエンドは、単一のWorkerで構成されるとは限らない。認証サービス、マッチメイキングサービス、ゲームセッション管理サービスなど、複数のマイクロサービスに分割されている可能性がある。このようなサービス間通信において、公開インターネットを経由するのは非効率かつ安全ではない。
+ここで重要な役割を果たすのがService Bindingsである。Service Bindingsは、あるWorkerが別のWorkerを公開URLを介さずに直接呼び出すことを可能にする機能であり、レイテンシのオーバーヘッドはゼロである 5。これはCloudflareプラットフォーム上でマイクロサービスを構築するための推奨パターンであり、パフォーマンスとセキュリティに優れた「内部ネットワーク」として機能する 5。
+例えば、プライマリAPIワーカーが認証処理を専門の認証ワーカーに委譲する場合、以下のように設定する。
+認証ワーカー (auth-worker)
+このワーカーは、認証ロジックをRPC（Remote Procedure Call）メソッドとして公開する。
+
+
+JavaScript
+
+
+
+
+// auth-worker/src/index.js
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+export default class AuthWorker extends WorkerEntrypoint {
+ async verifyToken(token) {
+   // トークン検証ロジック
+   const isValid = await someTokenValidation(token);
+   if (isValid) {
+     return { success: true, userId: "user-123" };
+   }
+   return { success: false };
+ }
+}
+
+APIゲートウェイワーカー (api-gateway-worker)
+このワーカーは、wrangler.tomlで認証ワーカーへのService Bindingを宣言する。
+
+
+Ini, TOML
+
+
+
+
+# api-gateway-worker/wrangler.toml
+name = "api-gateway-worker"
+main = "src/index.js"
+#... (assets configuration)...
+
+services =
+
+そして、APIゲートウェイワーカーのコード内で、RPC呼び出しを使用して認証を行う。
+
+
+JavaScript
+
+
+
+
+// api-gateway-worker/src/index.js
+export default {
+ async fetch(request, env) {
+   const token = request.headers.get("Authorization")?.replace("Bearer ", "");
+   if (!token) {
+     return new Response("Unauthorized", { status: 401 });
+   }
+
+   // Service Bindingを介して認証ワーカーのメソッドを呼び出す
+   const authResult = await env.AUTH_SERVICE.verifyToken(token);
+
+   if (!authResult.success) {
+     return new Response("Invalid token", { status: 403 });
+   }
+
+   // 認証成功後、メインのゲームロジックを処理
+   //...
+   return new Response(`Authenticated as user ${authResult.userId}`);
+ }
+}
+
+このアーキテクチャは、Cloudflareが提供する機能群（静的アセット、Workers、Service Bindings）が単なる独立した機能の集合ではなく、現代的なフルスタックアプリケーションを構築するための、一貫性のある意見表明されたスタックであることを示している。開発者は、このプラットフォームの思想に沿ってアーキテクチャを設計することで、パフォーマンス、セキュリティ、開発効率を最大化できる。
+
+
+セクション2: 状態同期の階梯：段階的分析
+
+
+ユーザーからの「段階的に提示する」という要件に直接応えるため、本セクションでは状態同期の実現方法を、一般的ながら欠陥のあるアプローチから始め、より堅牢な解決策へと段階的に評価していく。
+
+
+2.1. 第1階梯 - ステートレスなポーリングというアンチパターン
+
+
+状態同期の最も基本的なアプローチは、クライアントがサーバーに定期的に更新を問い合わせる「ポーリング」である 14。これは、クライアントが一定間隔でHTTPリクエストを送信し、「何か新しい情報はありますか？」と尋ねるモデルである。
+このアプローチは実装が単純である一方、リアルタイム性が要求されるゲームには致命的な欠陥を複数抱えているため、アンチパターンと見なされるべきである。
+* 高いレイテンシ: サーバー側で状態が変化してから、クライアントが次のポーリングでその変化を検知するまでの間に、本質的な遅延が存在する 14。例えば、ポーリング間隔が1秒の場合、平均500ms、最悪の場合ほぼ1秒の遅延が発生する。これは、アクションの即時性が求められるゲームでは許容できない。
+* 非効率性とオーバーヘッド: ポーリングは、たとえサーバー側に新しい情報がなくても、完全なHTTPリクエスト/レスポンスのサイクルを繰り返す。各リクエストにはヘッダーなどのオーバーヘッドが含まれ、帯域幅とサーバーリソースを無駄に消費する 14。
+* スケーラビリティの問題: 何千ものクライアントが同時に、かつ高頻度でポーリングを行うと、バックエンドに膨大な負荷がかかる 17。特に、Cloudflare Workersのようなリクエスト数に基づいた課金モデルでは、コストが不必要に増大する要因となる。
+このため、ポーリングはリアルタイムゲームの状態同期メカニズムとしては選択肢から除外すべきである。
+
+
+2.2. 第2階梯 - リアルタイム通信のためのWebSocketの導入
+
+
+ポーリングの根本的な問題を解決する次のステップは、WebSocketの採用である。WebSocketは、単一のTCP接続上で永続的かつ双方向の通信チャネルを提供するプロトコルであり、チャットやゲームのようなリアルタイムアプリケーションに理想的である 17。
+WebSocketは、サーバーからクライアントへ能動的にデータをプッシュできるため、ポーリングにおけるレイテンシとオーバーヘッドの問題を解決する。クライアントは一度接続を確立すれば、サーバーからの更新を即座に受け取ることができる。
+以下は、Cloudflare WorkerでWebSocket接続を待ち受ける基本的なコード例である 20。
+
+
+JavaScript
+
+
+
+
+// worker.js
+export default {
+ async fetch(request) {
+   const upgradeHeader = request.headers.get('Upgrade');
+   if (!upgradeHeader |
+| upgradeHeader!== 'websocket') {
+     return new Response('Expected Upgrade: websocket', { status: 426 });
+   }
+
+   const webSocketPair = new WebSocketPair();
+   const [client, server] = Object.values(webSocketPair);
+
+   server.accept();
+   server.addEventListener('message', event => {
+     // 受信したメッセージをエコーバック
+     server.send(`You sent: ${event.data}`);
+   });
+
+   return new Response(null, {
+     status: 101,
+     webSocket: client,
+   });
+ },
+};
+
+
+
+ステートレスのジレンマ
+
+
+WebSocketはプロトコルレベルでの問題を解決するが、Cloudflare Workersのようなサーバーレス環境では、新たなアーキテクチャ上の課題が浮上する。それが「ステートレスのジレンマ」である。
+標準的なCloudflare Workersは、ステートレスかつエフェメラル（短命）な実行環境である 21。これは、スケーラビリティのためには非常に優れた設計だが、状態管理には課題をもたらす。ゲームにおいて、プレイヤーAが接続するとCloudflareのグローバルネットワーク上のあるWorkerインスタンス（インスタンス1）に接続される。次にプレイヤーBが同じゲームに参加すると、負荷分散のために別のWorkerインスタンス（インスタンス2）に接続される可能性が高い。
+このとき、インスタンス1はインスタンス2に接続しているプレイヤーBのWebSocket接続を関知しない。逆もまた然りである。そのため、プレイヤーAのアクションの結果を、同じゲームに参加している全プレイヤーにブロードキャスト（一斉送信）することが、標準的なWorkerの仕組みだけでは極めて困難になる。
+この問題は、ポーリングからWebSocketへ移行することで、通信プロトコルの課題（クライアントプルからサーバープッシュへ）は解決されたものの、サーバーレス実行モデルの性質そのものから生じる、より複雑な「水平方向の協調」という新たな問題が露呈したことを意味する。単純なプロトコルの変更だけでは不十分であり、状態管理アーキテクチャの根本的な変革が必要であることを示唆している。
+
+
+表2.1: リアルタイムゲームにおける通信プロトコルのトレードオフ
+
+
+
+
+プロトコル
+	レイテンシ
+	帯域幅オーバーヘッド
+	サーバーリソースへの影響
+	スケーラビリティ
+	実装の複雑性
+	ショートポーリング
+	高い（間隔依存）
+	高い
+	高い
+	低い
+	低い
+	ロングポーリング
+	中程度
+	中程度
+	非常に高い（接続維持）
+	低い
+	中程度
+	WebSocket (ステートレスWorker)
+	非常に低い
+	非常に低い
+	低い（接続ごと）
+	限定的（協調問題）
+	高い（状態管理）
+	この表は、ポーリング方式を棄却し、WebSocketを採用する論理的根拠を明確に示す。同時に、ステートレスなWorker上でWebSocketを使用した場合でも、「スケーラビリティ」と「実装の複雑性」の項目で課題が残ることを示唆しており、これが次のセクションで紹介するDurable Objectsの必要性へと繋がる完璧な物語の橋渡しとなる。
+
+
+セクション3: 正規解：ゲームセッションの権威としてのDurable Objects
+
+
+本セクションでは、前セクションで提起された「ステートレスのジレンマ」に対するCloudflareの正規解として、Durable Objectsを詳述する。
+
+
+3.1. Durable Objectsとは？ステートレスからステートフルなサーバーレスへ
+
+
+Durable Objectsは、コンピューティング（処理能力）と強一貫性を持つストレージを独自に組み合わせた、特殊なCloudflare Workerである 23。これは、サーバーレスアーキテクチャにおけるステートフルなアプリケーションの構築という長年の課題を解決するために設計された 2。
+Durable Objectsは以下の重要な特性を持つ。
+* 一意性 (Uniqueness): 各Durable Objectはグローバルに一意なIDを持つ。そのIDに対するすべてのリクエストは、世界のどこから発信されたものであっても、常に単一の同じインスタンスにルーティングされる 23。この特性が、複数のクライアント間の協調問題を解決する鍵となる。
+* 永続性 (Durability): 各オブジェクトは、トランザクションに対応した強一貫性のある専用のストレージAPIにアクセスできる 23。これにより、状態を確実に永続化できる。
+* ステートフル性 (Statefulness): オブジェクトはアクティブである限り、インメモリで状態を保持する。これにより、繰り返し行われる操作を極めて高速に処理できる 23。
+これらの特性により、Durable Objectsは従来のステートレスなサーバーレス関数では困難だった、リアルタイムでの協調動作や状態管理を可能にする。
+
+
+3.2. ゲーム状態における「単一の信頼できる情報源」の原則
+
+
+Durable Objectsは、単一の調整ポイントとして機能する 23。各インスタンスは一度に単一のスレッドで実行され、リクエストを順番に処理するため、競合状態（レースコンディション）が本質的に発生しない 25。
+これは、ゲームの状態管理において最も重要な概念である。Durable Objectのインスタンスを、ある特定のゲームマッチにおける「単一の信頼できる情報源（Single Source of Truth）」として扱うことができる。すべてのプレイヤーのアクション（移動、アイテム使用など）は、この単一のオブジェクトに送信される。オブジェクトはそれらのアクションを順番に処理し、ゲーム状態を更新し、全参加者に対して一貫したゲームの世界を保証する。これは、アーキテクチャ的には従来の専用ゲームサーバーインスタンスに相当するが、それをサーバーレスモデルで実現したものである。
+
+
+3.3. アーキテクチャパターン：ゲームマッチごとに1つのDurable Objectインスタンス
+
+
+Cloudflareのドキュメントでは、Durable Objectsを「小さく、数多く」利用することが推奨されている 30。アプリケーションの状態を、ドキュメントごと、ユーザーごと、あるいはチャットルームごとといった論理的な単位に分割（シャーディング）するパターンが効果的である 26。
+この考え方をゲームのコンテキストに直接適用する。つまり、アクティブな各ゲームマッチを、それぞれ一意のDurable Objectインスタンスによって表現する。
+このアーキテクチャでは、例えば「マッチメイキング」を担当するステートレスなWorkerが、新しいマッチが成立した際にidFromName()やnewUniqueId()といったメソッドを用いてマッチ固有のIDを生成し、そのIDを持つDurable Objectを作成する 25。そして、参加するプレイヤーたちにそのオブジェクトのIDを通知する。この設計は、ゲームの数が増えても、新しいオブジェクトを作成するだけで対応できるため、本質的に水平方向へのスケーラビリティを持つ 2。
+
+
+3.4. 詳細解説：Durable Objectの整合性モデルとゲームにおける重要性
+
+
+Durable Objectsは強一貫性 (Strong Consistency) を提供する 23。ストレージへの書き込みはトランザクショナルであり、
+awaitが完了する前にデータが永続化されることが保証されている 27。これは、競合状態を防ぐための意図的な設計である 28。
+この特性は、結果整合性 (Eventual Consistency) を持つCloudflare Workers KVのようなシステムとは対照的である 34。ゲームロジックにおいて、強一貫性は交渉の余地がない要件である。例えば、プレイヤーが1つしか存在しない貴重なアイテムを使用したというアクションは、その結果が確実に記録されてから他のプレイヤーに通知されなければならない。結果整合性を持つシステムでは、2人のプレイヤーがほぼ同時に同じアイテムを使用できてしまうといった、ゲームの前提を破壊する事態が発生しうる。
+Durable Objectsが提供するトランザクショナルなストレージAPI（例：ctx.storage.transaction()）は、複数の状態更新をアトミック（不可分）に行うことを保証するため、ゲームの重要なイベントを処理するバックエンドとして高い信頼性を提供する 27。
+このアーキテクチャは、従来の「データベースを状態管理者とする」モデルから、「コンピューティングと状態が共存する」モデル（アクターモデル）へのパラダイムシフトを意味する。従来のアーキテクチャでは、ステートレスなアプリケーションサーバーがリモートのデータベースに読み書きを行うたびにネットワークレイテンシが発生していた。一方、Durable Objectsは、コンピューティング（JavaScriptクラスのインスタンス）と状態（接続されたストレージ）を単一のユニットに融合させる 23。
+この設計により、インメモリ状態へのアクセスは実質的に「ゼロレイテンシ」となり、専用の永続ストレージへのアクセスもネットワークを介さないため極めて高速である 28。開発者は、「アプリケーションサーバーがデータベースにクエリを発行する」という思考から、「ステートフルなオブジェクトのメソッドを呼び出す」という思考に切り替えるべきである。これにより、複数のデータベースクエリや複雑なトランザクション、キャッシュ層を必要としたゲームロジックが、オブジェクトの単一スレッド実行コンテキスト内での単純なインメモリメソッド呼び出しとして表現できるようになり、コードの単純化とパフォーマンスの大幅な向上が実現される。これはまさにアクターモデルの実装そのものである 23。
+
+
+セクション4: Durable ObjectsとWebSocketによるリアルタイム状態同期の実装
+
+
+本セクションでは、前セクションで提示した推奨アーキテクチャを実践するための具体的な実装方法を解説する。
+
+
+4.1. 接続フロー：クライアントからAPIワーカー、そしてDurable Objectへ
+
+
+クライアントはDurable Objectに直接接続することはできない。クライアントはまず標準的なWorkerに接続し、そのWorkerがリクエストやWebSocket接続を適切なDurable ObjectインスタンスにそのIDを用いて転送（フォワード）する必要がある 25。
+接続フローは以下の通りである。
+1. クライアントは、標準的なAPIワーカーに対してWebSocketアップグレードリクエストを送信する。（例：wss://game.example.com/api/match/{matchId}/connect）
+2. APIワーカーはリクエストからmatchIdを抽出し、env.MATCH.idFromName(matchId) を使ってDurable ObjectのIDを取得する。
+3. 次にenv.MATCH.get(id) を使って、対象のDurable Objectのスタブ（通信用の代理オブジェクト）を取得する。
+4. APIワーカーは、受け取ったリクエストをそのスタブに転送する 35。
+5. Durable Objectのfetch()ハンドラがリクエストを受け取り、WebSocket接続を確立する。
+この一連の流れにより、クライアントは特定のゲームマッチを管理する特定のDurable Objectと、安全かつ一意に接続される。
+
+
+4.2. コード実装：WebSocket接続のアップグレードとハンドオフ
+
+
+以下に、APIワーカーとDurable Objectクラスの完全なTypeScriptコード例を示す。
+APIワーカー (api-worker/src/index.ts)
+このワーカーはHonoフレームワークを使用し、WebSocket接続要求を適切なDurable Objectにルーティングする。
+
+
+TypeScript
+
+
+
+
+import { Hono } from 'hono';
+
+// 環境変数の型定義
+type Env = {
+ MATCH: DurableObjectNamespace;
+};
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.get('/api/match/:matchId/connect', async (c) => {
+ const matchId = c.req.param('matchId');
+
+ // WebSocketアップグレードヘッダーの検証
+ const upgradeHeader = c.req.header('Upgrade');
+ if (!upgradeHeader |
+| upgradeHeader!== 'websocket') {
+   return new Response('Expected Upgrade: websocket', { status: 426 });
+ }
+
+ // マッチIDからDurable ObjectのIDを生成
+ const durableObjectId = c.env.MATCH.idFromName(matchId);
+ // Durable Objectのスタブを取得
+ const durableObjectStub = c.env.MATCH.get(durableObjectId);
+
+ // リクエストをDurable Objectに転送
+ return durableObjectStub.fetch(c.req.raw);
+});
+
+export default app;
+
+Durable Objectクラス (durable-objects/match.ts)
+このクラスがゲームマッチの状態を管理し、WebSocket接続を処理する。
+
+
+TypeScript
+
+
+
+
+export class Match implements DurableObject {
+ state: DurableObjectState;
+ env: Env;
+ connectedClients: WebSocket;
+
+ constructor(state: DurableObjectState, env: Env) {
+   this.state = state;
+   this.env = env;
+   this.connectedClients =;
+ }
+
+ async fetch(request: Request) {
+   // WebSocket接続を確立するためのペアを作成
+   const pair = new WebSocketPair();
+   const [client, server] = Object.values(pair);
+
+   // サーバー側のソケットをDurable Objectに受け入れさせる
+   // これにより、このDOがWebSocketメッセージを処理できるようになる
+   server.accept();
+
+   // 新しいクライアントを接続リストに追加
+   this.connectedClients.push(server);
+
+   // メッセージ受信時の処理
+   server.addEventListener('message', event => {
+     console.log(`Received message: ${event.data}`);
+     // ここでゲームロジックを処理し、状態をブロードキャストする
+     this.broadcast(JSON.stringify({ message: `Processed: ${event.data}` }));
+   });
+
+   // 接続が閉じたときの処理
+   server.addEventListener('close', () => {
+     // 接続リストからクライアントを削除
+     this.connectedClients = this.connectedClients.filter(ws => ws!== server);
+     this.broadcast(JSON.stringify({ system: 'A player has disconnected.' }));
+   });
+
+   // クライアント側のソケットを含むレスポンスを返す
+   return new Response(null, {
+     status: 101, // Switching Protocols
+     webSocket: client,
+   });
+ }
+ 
+ // 接続中の全クライアントにメッセージをブロードキャストするメソッド
+ broadcast(message: string) {
+   this.connectedClients.forEach(ws => {
+     try {
+       ws.send(message);
+     } catch (e) {
+       // エラーが発生したソケット（切断済みなど）をリストから削除
+       this.connectedClients = this.connectedClients.filter(s => s!== ws);
+     }
+   });
+ }
+}
+
+
+
+4.3. 状態のブロードキャスト：Durable Objectから全プレイヤーへの更新プッシュ
+
+
+ブロードキャスト問題の解決策は、Durable Objectがインメモリ状態として接続中の全WebSocketクライアントのリストを保持することである 35。上記のコード例にある
+connectedClients配列がこれにあたる。
+プレイヤーからアクション（メッセージ）を受信すると、Durable Objectは以下の処理を行う。
+1. 受信したアクションに基づいてゲームの内部状態を更新する（例：プレイヤーの位置を更新、スコアを変更）。この状態は、必要に応じてthis.state.storageを使用して永続化される。
+2. 更新された新しいゲーム状態を含むメッセージを作成する。
+3. broadcast()メソッドを呼び出し、connectedClients配列をループ処理して、接続中の全クライアントに新しい状態を送信する 38。
+このパターンにより、単一のDurable Objectがハブとなり、一貫性のあるゲーム状態をリアルタイムで全プレイヤーに同期させることができる。
+
+
+4.4. スケールとコストの最適化：WebSocket Hibernationの活用
+
+
+Durable Objects専用の機能として、WebSocket Hibernation APIがある 37。これは、WebSocket接続が開いたままでも、Durable Object自体をメモリから退避（evict）させることを可能にする、極めて重要な最適化機能である 36。
+Hibernationを使用しない場合、たとえアイドル状態であっても1つのWebSocket接続が開いているだけで、Durable Objectはメモリ内に保持され続け、継続時間に基づく課金（Duration-based billing）が発生する 37。多数のプレイヤーが接続する可能性があるゲームでは、このコストは無視できない。
+WebSocket Hibernationは、この問題を解決する。接続はCloudflareのネットワーク基盤自体が維持し、Durable Objectはメッセージが実際に送受信される瞬間だけ起動してコンピューティングリソースを消費する 39。これにより、多数のアイドル状態の接続をほぼゼロコストでサポートできる。
+Hibernationを有効にするには、コードを以下のように変更する。
+
+
+TypeScript
+
+
+
+
+// durable-objects/match.ts (Hibernation対応版)
+
+export class Match implements DurableObject {
+ state: DurableObjectState;
+ env: Env;
+
+ constructor(state: DurableObjectState, env: Env) {
+   this.state = state;
+   this.env = env;
+ }
+
+ async fetch(request: Request) {
+   const pair = new WebSocketPair();
+   const [client, server] = Object.values(pair);
+
+   // server.accept()の代わりにstate.acceptWebSocket(server)を使用
+   this.state.acceptWebSocket(server);
+
+   return new Response(null, {
+     status: 101,
+     webSocket: client,
+   });
+ }
+
+ // addEventListenerの代わりに、専用のハンドラメソッドを実装
+ async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+   // 接続中の全ソケットを取得してブロードキャスト
+   const clients = this.state.getWebSockets();
+   for (const client of clients) {
+     if (client.readyState === WebSocket.READY_STATE_OPEN) {
+       client.send(message);
+     }
+   }
+ }
+
+ async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
+   // 必要であればクローズ処理を実装
+ }
+}
+
+この変更により、fetch()メソッド内でaddEventListenerを登録するのではなく、クラスにwebSocketMessage()やwebSocketClose()といった専用のハンドラを実装する形になる 36。
+this.state.acceptWebSocket(server)を呼び出すことで、ランタイムはこれらのハンドラにイベントを自動的にディスパッチするようになる。
+このWebSocket Hibernationは、多数の同時接続をサポートするアプリケーションの経済モデルを根本から変える。従来のサーバーモデルでは、接続数に比例してリソースとコストが増大したが、Hibernationにより「同時接続ユーザー数」と「同時アクティブコンピューティング」が分離される。これにより、大規模なロビーやソーシャルスペースを持つゲームなど、これまでコスト的に実現が難しかったアプリケーションの設計が可能になる。
+
+
+セクション5: Durable Object Alarmsによるゲームループの設計
+
+
+多くのゲームでは、プレイヤーのアクションに反応するだけでなく、時間経過に基づいてサーバー側で自律的にロジックを実行する必要がある。本セクションでは、Durable Object Alarmsを使用して、サーバー権威のゲームループを実装する方法を解説する。
+
+
+5.1. サーバー権威ループの必要性
+
+
+リアルタイムゲームにおいて、時間の進行や物理演算をクライアント側に依存するのは、チート行為やネットワーク環境の差異による不整合を招くため、極めて危険である。公正で一貫したゲーム体験を提供するためには、サーバーが時間の進行を管理し、NPC（ノンプレイヤーキャラクター）の挙動、ターン制の制限時間、定期的なリソースの更新といったロジックを権威的に実行する「サーバー権威のゲームループ」が不可欠である。
+
+
+5.2. Alarms APIの概要
+
+
+Durable Object Alarms APIは、Durable Objectが将来の特定の時間に自身を起動するようにスケジュールするための機能である 23。スケジュールされた時間になると、オブジェクトの
+alarm()ハンドラが呼び出される。
+Alarms APIは、永続性がないsetTimeoutとは異なり、たとえオブジェクトが休止状態（Hibernation）になってもスケジュールは保持され、時間になればオブジェクトを起動して実行される。また、実行は少なくとも1回は保証されており（at-least-once execution）、ハンドラがエラーをスローした場合は自動的にリトライされるため、ゲームロジックに必要な信頼性を提供する 40。
+
+
+5.3. 実装：状態更新のための定期的な「ティック」の生成
+
+
+サーバーサイドのゲームループを実装するための一般的なパターンは、alarm()ハンドラ内でロジックを処理した後、次の「ティック」のために再度ctx.storage.setAlarm()を呼び出して自身を再スケジュールすることである 42。
+以下に、20Hz（秒間20回）のゲームループを実装するDurable Objectのコード例を示す。
+
+
+TypeScript
+
+
+
+
+// durable-objects/match.ts (Alarms対応版)
+
+const TICK_RATE_HZ = 20;
+const TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ;
+
+export class Match implements DurableObject {
+ state: DurableObjectState;
+ //... (他のプロパティ)
+
+ constructor(state: DurableObjectState, env: Env) {
+   this.state = state;
+   //...
+   // blockConcurrencyWhile内でストレージからゲーム状態を読み込む
+   this.state.blockConcurrencyWhile(async () => {
+       this.gameState = await this.state.storage.get('gameState') |
+| this.initializeGameState();
+   });
+ }
+
+ async fetch(request: Request) {
+   //... (WebSocket接続処理)...
+
+   // 最初のクライアントが接続したときにゲームループを開始
+   const clients = this.state.getWebSockets();
+   if (clients.length === 1) {
+     // 既存のアラームがないことを確認してから設定
+     const currentAlarm = await this.state.storage.getAlarm();
+     if (currentAlarm === null) {
+       this.state.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+     }
+   }
+   
+   //... (fetchの戻り値)...
+ }
+ 
+ // ゲームループの本体
+ async alarm() {
+   // 1. ゲーム状態を更新する (例: NPCの移動、物理演算)
+   this.updateGameState();
+
+   // 2. 更新された状態を全クライアントにブロードキャスト
+   this.broadcast(JSON.stringify(this.gameState));
+
+   // 3. 次のティックをスケジュール
+   this.state.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+
+   // 4. 更新された状態を永続ストレージに書き込む
+   await this.state.storage.put('gameState', this.gameState);
+ }
+
+ //... (webSocketMessage, broadcast, updateGameStateなどのメソッド)...
+}
+
+この実装では、最初のプレイヤーが接続した際にゲームループを開始し、alarm()ハンドラが実行されるたびにゲーム状態を更新・ブロードキャストし、そして次のアラームをセットすることで、信頼性の高い定期的なループを形成している。
+
+
+5.4. 定期的なタスクの管理：ターンタイマー、NPCロジック、ワールドイベント
+
+
+Alarms APIの柔軟性は、高頻度のゲームループ以外にも応用できる。Cron TriggersがWorker全体に対して静的に設定されるのに対し、Alarmsは個々のDurable Objectインスタンスから動的に、かつきめ細かくスケジュールできるため、オブジェクトごとのタスク管理に適している 41。
+* ターン制ゲーム: プレイヤーのターンが始まったときに、制限時間後に発火するアラームを設定する。alarm()ハンドラ内でターンを強制終了させるロジックを実装できる。
+* NPCの自律的行動: 各NPCが次にアクションを起こす時間をアラームでスケジュールする。これにより、NPCごとに独立した思考サイクルを持たせることができる。
+* ワールドイベント: ゲーム内の特定の時間に発生するイベント（例：夜になるとモンスターが強くなる）を、ワールド全体を管理するDurable Objectのアラームでトリガーする。
+Alarms APIとDurable Objectの単一スレッド実行保証の組み合わせは、ゲームループのような複雑でステートフルなワークフローを構築するための、安全かつ強力な基本要素を提供する。これにより、開発者は外部のスケジューラや複雑なステートマシン（例：AWS Step Functions）を導入することなく、時間ベースおよびイベント駆動のロジックをDurable Object内に直接モデル化でき、アーキテクチャを大幅に簡素化できる 44。
+
+
+セクション6: 本番環境のための考慮事項
+
+
+これまでのセクションで中核となるアーキテクチャを設計したが、これを本番環境で確実に運用するためには、テスト、CI/CD、監視、セキュリティといった周辺領域の整備が不可欠である。
+
+
+6.1. WorkersとDurable Objectsのための堅牢なテスト戦略
+
+
+Cloudflareは、workerd（本番環境と同じランタイム）内でテストを実行する@cloudflare/vitest-pool-workersとVitestの組み合わせを推奨している 45。Miniflareは、その基盤となるシミュレータであり、より詳細な制御が必要な場合に使用できる 47。
+以下のような多層的なテストアプローチが推奨される。
+* 単体テスト (Unit Tests): Vitestインテグレーションを使用し、個別の関数やHonoのルートを分離してテストする 45。依存するBindingはモック化する。
+* 統合テスト (Integration Tests): APIワーカーとDurable Objectの連携をテストする。MiniflareのAPI（例：getDurableObjectNamespace）をテストコード内で使用し、Durable Objectのスタブを取得してメソッドを呼び出し、その状態変化をアサートする 50。これにより、実際のBindingに近い環境でコンポーネント間の相互作用を検証できる。
+* エンドツーエンドテスト (E2E Tests): wrangler devでローカル開発サーバーを起動し、PlaywrightやPuppeteerのようなフレームワークで実際のクライアントをスクリプト化する。クライアントがWebSocket接続を確立し、サーバーからの状態更新を正しく受信できるかなど、完全なフローを検証する。
+
+
+6.2. CI/CD: GitHub Actionsによるデプロイの自動化とヘルスチェック
+
+
+CI/CDパイプラインの導入は、手動でのwrangler deployコマンド実行をなくし、チーム全体で一貫性のあるビルドとデプロイを保証するためのベストプラクティスである 51。Cloudflareは、GitHub Actionsでデプロイを自動化するための公式アクション
+cloudflare/wrangler-actionを提供している 52。
+以下に、本番環境を想定したGitHub Actionsのワークフロー例の要点を示す。
+
+
+YAML
+
+
+
+
+#.github/workflows/deploy.yml
+name: Deploy Game Application
+on:
+ push:
+   branches:
+     - main
+
+jobs:
+ test:
+   runs-on: ubuntu-latest
+   steps:
+     - uses: actions/checkout@v4
+     - uses: actions/setup-node@v4
+       with:
+         node-version: '20'
+     - name: Install dependencies
+       run: npm install
+     - name: Run tests
+       run: npm test # `vitest run`などを実行
+
+ deploy:
+   runs-on: ubuntu-latest
+   needs: test
+   steps:
+     - uses: actions/checkout@v4
+     - uses: actions/setup-node@v4
+       with:
+         node-version: '20'
+     - name: Install dependencies
+       run: npm install
+     - name: Build frontend
+       run: npm run build:frontend
+     
+     # フロントエンドとバックエンドのワーカーをデプロイ
+     - name: Deploy Workers
+       uses: cloudflare/wrangler-action@v3
+       with:
+         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+         # wrangler.tomlで複数のワーカーを定義している場合、Wranglerがそれらをデプロイする
+         # Monorepoの場合は、プロジェクトごとにコマンドを指定する必要がある [53]
+
+     - name: Post-deployment Health Check
+       run: |
+         sleep 15 # デプロイの伝播を待つ
+         curl --fail https://game.example.com/api/health
+
+* ヘルスチェック: デプロイ後、curlなどを用いて公開されたヘルスチェック用エンドポイント（例：/api/health）を叩き、デプロイが成功したことを確認する 54。
+* ロールバック: Cloudflareはwrangler rollbackコマンドによるロールバック機能を提供する 56。GitHub Actionsのワークフローでは、ヘルスチェックが失敗した場合にこのコマンドを実行するステップを追加することで、自動ロールバックを実装できる。ただし、Durable Objectのマイグレーションが行われた場合など、ロールバックできない制約も存在する点に注意が必要である 56。
+
+
+6.3. オブザーバビリティ：分散システムの監視とエラー追跡
+
+
+分散システムであるWorkersアプリケーションでは、何が起きているかを把握するためのオブザーバビリティ（可観測性）が極めて重要である。Cloudflareは基本的なメトリクスとログを提供するが 57、より高度なエラー追跡のためには、Sentry 58 やDatadog 61 といったサードパーティサービスとの公式統合が推奨される。
+* エラー追跡: Sentryを導入し、HonoアプリケーションのルートをSentryのハンドラでラップすることで、未補足の例外を自動的にキャプチャし、詳細なスタックトレースとともに報告させることができる。
+* ログとメトリクス: Logpush機能 64 を設定し、構造化されたログをDatadogのような監視プラットフォームにストリーミングする。これにより、リクエストのレイテンシ、エラーレート、CPU実行時間などのメトリクスをダッシュボードで可視化し、異常発生時にアラートを発報させることが可能になる 66。
+
+
+6.4. セキュリティとコスト最適化：シークレット管理とレート制限
+
+
+* シークレット管理: APIキーや認証トークンなどの機密情報をコードやwrangler.tomlに平文で記述してはならない。wrangler secret putコマンドを使用するか、より集中管理が可能なSecrets Storeを利用して、暗号化された状態で安全に管理するべきである 67。
+* レート制限: APIワーカーのエンドポイントにレート制限を設けることは、Durable Objectのようなより高価なリソースを保護し、悪意のある攻撃や乱用を防ぐために不可欠である。CloudflareのWAFレベルで設定する方法 71 と、Worker内でプログラム的に実装する方法がある。後者の場合、Workers Rate Limiting APIバインディングを使用することで、IPアドレスごとなどに柔軟なレート制限を実装できる 73。
+* コスト最適化: 本レポートで推奨するアーキテクチャ、特にWebSocket Hibernationの活用は、Cloudflare Workersの課金モデル（リクエスト数＋CPU時間/実行時間）において高いコスト効率を実現する 75。アイドル状態の接続コストを最小限に抑えることで、大規模なリアルタイムアプリケーションを経済的に運用できる。
+これらのDevOpsプラクティスは、従来のクラウドネイティブアプリケーション開発におけるものと共通の規律を要求するが、そのツールと技術はWorkers固有の環境に適応させる必要がある。単に既存のCI/CDパイプラインを流用するのではなく、Wrangler、Miniflare、Vitest poolsといったWorkersネイティブのツールチェーンを採用することが、成功への鍵となる。
+
+
+セクション7: 最終アーキテクチャと推奨事項
+
+
+本レポートで展開してきた段階的な分析を統合し、Cloudflare Workers上でリアルタイムゲームを構築するための最終的なアーキテクチャ設計図と推奨事項を提示する。
+
+
+7.1. 統合：完全なアーキテクチャ設計図
+
+
+最終的に推奨されるアーキテクチャは、以下のコンポーネントが連携して動作するシステムである。
+1. ゲームクライアント: ブラウザ上で動作するSPA。静的アセットとしてCloudflareのエッジネットワークから配信される。
+2. 静的アセットホスティング: wrangler.tomlの[assets]設定に基づき、フロントエンドのビルド成果物を配信する。
+3. APIゲートウェイワーカー: Honoフレームワークで構築されたステートレスなWorker。クライアントからのすべてのAPIリクエスト（HTTPおよびWebSocketアップグレードリクエスト）の単一エントリポイントとして機能する。認証、レート制限、リクエストの検証などを行う。
+4. Service Bindings: APIゲートウェイワーカーが、認証ワーカーやマッチメイキングワーカーといった他のバックエンドマイクロサービスと、セキュアかつ低レイテンシで通信するための内部RPCチャネル。
+5. ゲームマッチDurable Object: 各ゲームセッションの「単一の信頼できる情報源」。マッチの状態（プレイヤーの位置、スコアなど）をインメモリおよび永続ストレージで管理する。
+6. WebSocket接続: 各クライアントは、APIゲートウェイワーカーを経由して、自身が参加しているゲームマッチのDurable Objectインスタンスに永続的なWebSocket接続を確立する。WebSocket Hibernationを活用してコストを最適化する。
+7. Alarms API: 各ゲームマッチDurable Object内で、サーバー権威のゲームループ（ティック）を定期的に実行するために使用される。
+8. 外部監視サービス: Sentry（エラー追跡）やDatadog（ログ、メトリクス）がLogpushを介して連携され、アプリケーションの健全性を監視する。
+この設計は、Cloudflareのプラットフォームが提供する各コンポーネントの長所を最大限に活用し、スケーラビリティ、パフォーマンス、信頼性、開発効率のすべてを高いレベルで実現する。
+
+
+7.2. アーキテクチャ決定とトレードオフの要約
+
+
+本レポートでたどったアーキテクチャの進化の道のりは、以下のような一連の論理的な決定に基づいている。
+* まず、リアルタイム性の要求から、HTTPポーリングを棄却した。その高いレイテンシと非効率性は、現代のゲームアプリケーションには不適切である。
+* 次に、WebSocketを採用することで、低レイテンシな双方向通信を実現した。しかし、これにより標準的なステートレスWorkerの「水平方向の協調問題」が浮上した。
+* この協調問題を解決するために、Durable Objectsを状態管理の中核として導入した。その一意性と強一貫性により、Durable Objectはゲームマッチの信頼できる状態管理者として理想的である。
+* 最後に、Alarms APIを導入することで、サーバー権威の信頼性の高いゲームループを実装し、アーキテクチャを完成させた。
+この選択は、単に機能を選択するだけでなく、Cloudflareが提唱する「ステートフルなサーバーレス」という新しいパラダイムを受け入れることを意味する。
+
+
+表7.1: 最終的なアーキテクチャモデルの比較
+
+
+
+
+アーキテクチャモデル
+	コア技術
+	状態管理
+	整合性
+	レイテンシ
+	スケーラビリティ
+	開発の複雑性
+	HTTPポーリング + ステートレスWorker
+	HTTP, Worker
+	外部DB
+	DB依存
+	高い
+	低い
+	中程度
+	WebSocket + ステートレスWorker
+	WebSocket, Worker
+	外部DB/PubSub
+	外部依存
+	低い
+	限定的
+	非常に高い
+	推奨：WebSocket + ステートフルDurable Object
+	WebSocket, Worker, Durable Object, Alarms
+	DO内蔵（メモリ＋ストレージ）
+	強い
+	非常に低い
+	高い
+	低い（プラットフォームが解決）
+	この最終比較表が示すように、Durable Objectsを中核に据えたアーキテクチャは、他のアプローチが抱えるレイテンシ、スケーラビリティ、あるいは複雑性の問題を、プラットフォームレベルでエレガントに解決する。Cloudflare Workers上で高性能なリアルタイムゲームアプリケーションを構築する上で、これが最も合理的かつ強力な選択肢であると結論付ける。
+引用文献
+1. Static Assets · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/
+2. Level Up Your Serverless Game with Cloudflare Durable Objects | 9thCO, 6月 28, 2025にアクセス、 https://www.9thco.com/labs/level-up-serverless-with-durable-objects
+3. Static assets · Cloudflare for Platforms docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/configuration/static-assets/
+4. Hono - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/framework-guides/web-apps/more-web-frameworks/hono/
+5. Service bindings - Runtime APIs · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/
+6. Cloudflare Workers - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/getting-started/cloudflare-workers
+7. Configuration · Cloudflare Pages docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+8. Static Assets · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/vite-plugin/reference/static-assets/
+9. Single Page Application (SPA) - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/
+10. Worker script · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/routing/worker-script/
+11. Proposal: Support for _routes.json in Workers with static assets #9143 - GitHub, 6月 27, 2025にアクセス、 https://github.com/cloudflare/workers-sdk/discussions/9143?sort=new
+12. Configuration and Bindings · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/binding/
+13. Multiple Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/miniflare/core/multiple-workers/
+14. Polling and Long-Polling: Essential Techniques for Real-Time Web Applications, 6月 28, 2025にアクセス、 https://kennethnnalue.medium.com/polling-and-long-polling-essential-techniques-for-real-time-web-applications-12868b13f21b
+15. Short-polling vs Long-polling for real time web applications? - Stack Overflow, 6月 28, 2025にアクセス、 https://stackoverflow.com/questions/4642598/short-polling-vs-long-polling-for-real-time-web-applications
+16. Hard downsides of long polling? - node.js - Stack Overflow, 6月 28, 2025にアクセス、 https://stackoverflow.com/questions/21676324/hard-downsides-of-long-polling
+17. What is HTTP Long Polling - and is it still relevant today? - Ably Realtime, 6月 28, 2025にアクセス、 https://ably.com/topic/long-polling
+18. HTTP Long Polling vs WebSockets - Medium, 6月 28, 2025にアクセス、 https://medium.com/@dmosyan/http-long-polling-vs-websockets-dadab8f7f26f
+19. Cloudflare acquires PartyKit to allow developers to build real-time multi-user applications, 6月 28, 2025にアクセス、 https://blog.cloudflare.com/fr-fr/cloudflare-acquires-partykit
+20. Using the WebSockets API - Workers - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/workers/examples/websockets/
+21. Optimizing application development with serverless - Cloudflare, 6月 28, 2025にアクセス、 https://www.cloudflare.com/the-net/optimizing-app-dev/
+22. The next evolution of serverless is stateful • Solving the decision problem - Sunil Pai, 6月 28, 2025にアクセス、 https://sunilpai.dev/posts/the-future-of-serverless/
+23. What are Durable Objects? - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/what-are-durable-objects/
+24. Overview · Cloudflare Durable Objects docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/
+25. The Future of Multiplayer: Cloudflare Durable Objects - Bruno Scheufler, 6月 28, 2025にアクセス、 https://brunoscheufler.com/blog/2021-04-11-the-future-of-multiplayer-cloudflare-durable-objects
+26. 388: Durable Objects - CodePen Blog, 6月 28, 2025にアクセス、 https://blog.codepen.io/2022/10/19/388-durable-objects/
+27. Durable Object Storage - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/api/storage-api/
+28. Durable Objects: Easy, Fast, Correct — Choose three - The Cloudflare Blog, 6月 28, 2025にアクセス、 https://blog.cloudflare.com/durable-objects-easy-fast-correct-choose-three/
+29. Workers Durable Objects Beta: A New Approach to Stateful Serverless - The Cloudflare Blog, 6月 28, 2025にアクセス、 https://blog.cloudflare.com/introducing-workers-durable-objects/
+30. Zero-latency SQLite storage in every Durable Object - The Cloudflare Blog, 6月 28, 2025にアクセス、 https://blog.cloudflare.com/sqlite-in-durable-objects/
+31. Durable Objects (DO) — Unlimited single-threaded servers spread across the world, 6月 28, 2025にアクセス、 https://www.lambrospetrou.com/articles/durable-objects-cloudflare/
+32. On Durable Objects | Kevin Wang's Blog, 6月 28, 2025にアクセス、 https://thekevinwang.com/2024/05/11/on-durable-objects
+33. Using Durable Objets for Assets - Fast Deployment - Good or bad idea?, 6月 28, 2025にアクセス、 https://community.cloudflare.com/t/using-durable-objets-for-assets-fast-deployment-good-or-bad-idea/232117
+34. Using Durable Objects : r/programming - Reddit, 6月 28, 2025にアクセス、 https://www.reddit.com/r/programming/comments/zgpkm9/using_durable_objects/
+35. Build a WebSocket server - Durable Objects - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/examples/websocket-server/
+36. Use WebSockets - Durable Objects - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/best-practices/websockets/
+37. cloudflare/workers-chat-demo - GitHub, 6月 28, 2025にアクセス、 https://github.com/cloudflare/workers-chat-demo
+38. Making a real-time chatroom app with cloudflare workers - DEV Community, 6月 28, 2025にアクセス、 https://dev.to/viiik/making-a-real-time-chatroom-app-with-cloudflare-workers-2cp4
+39. Build a WebSocket server with WebSocket Hibernation · Cloudflare Durable Objects docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/
+40. Alarms - Durable Objects - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/api/alarms/
+41. Durable Objects Alarms — a wake-up call for your applications - The Cloudflare Blog, 6月 28, 2025にアクセス、 https://blog.cloudflare.com/durable-objects-alarms/
+42. Use the Alarms API - Durable Objects - Cloudflare Docs, 6月 28, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/examples/alarms-api/
+43. Can a Durable Object have an alarm for a time in the past that will never fire? #18324, 6月 28, 2025にアクセス、 https://github.com/cloudflare/cloudflare-docs/issues/18324
+44. Durable Objects - Noise, 6月 28, 2025にアクセス、 https://noise.getoto.net/tag/durable-objects/
+45. Write your first test · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/vitest-integration/write-your-first-test/
+46. Testing - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/guides/testing
+47. Writing tests · Cloudflare Workers docs - Miniflare, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/miniflare/writing-tests/
+48. Miniflare - Get Started - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/miniflare/get-started/
+49. Testing Helper - Hono - Cloudflare Pages, 6月 27, 2025にアクセス、 https://hono-ja.pages.dev/docs/helpers/testing
+50. workers-sdk/packages/miniflare/README.md at main - GitHub, 6月 27, 2025にアクセス、 https://github.com/cloudflare/workers-sdk/blob/main/packages/miniflare/README.md
+51. CI/CD · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/
+52. GitHub Actions - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
+53. Advanced setups · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/builds/advanced-setups/
+54. Health Checks - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/health-checks/
+55. Let's DO this: detecting Workers Builds errors across 1 million Durable Objects, 6月 27, 2025にアクセス、 https://blog.cloudflare.com/detecting-workers-builds-errors-across-1-million-durable-durable-objects/
+56. Rollbacks - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/
+57. Metrics and analytics - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/observability/metrics-and-analytics/
+58. Errors and exceptions - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/observability/errors/
+59. Cloudflare + Sentry Integration, 6月 27, 2025にアクセス、 https://sentry.io/integrations/cloudflare/
+60. Sentry for Cloudflare Workers | Sentry Changelog, 6月 27, 2025にアクセス、 https://sentry.io/changelog/2023-9-28-sentry-for-cloudflare-workers/
+61. Datadog - Tech Partners | Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/fr-fr/partners/technology-partners/datadog/
+62. Datadog - Analytics - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/analytics/analytics-integrations/datadog/
+63. Cloudflare - Datadog Docs, 6月 27, 2025にアクセス、 https://docs.datadoghq.com/integrations/cloudflare/
+64. Workers Logpush - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/observability/logs/logpush/
+65. How to Monitor Cloudflare Logs (Logpush Optional) - OpenObserve, 6月 27, 2025にアクセス、 https://openobserve.ai/blog/cloudflare-monitoring/
+66. Logpush alerts and analytics · Cloudflare Logs docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/logs/get-started/alerts-and-analytics/
+67. Secrets - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/configuration/secrets/
+68. Use Secrets Store with Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/secrets-store/integrations/workers/
+69. What is a Cloudflare Secret? - Pulumi, 6月 27, 2025にアクセス、 https://www.pulumi.com/what-is/what-is-a-cloudflare-secret/
+70. What is secrets management? - Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/learning/security/glossary/secrets-management/
+71. Rate limiting rules · Cloudflare Web Application Firewall (WAF) docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/waf/rate-limiting-rules/
+72. Advanced Rate Limiting & Brute Force Protection - Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/application-services/products/rate-limiting/
+73. Rate Limiting - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+74. Build a rate limiter - Durable Objects - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/durable-objects/examples/build-a-rate-limiter/
+75. Workers & Pages Pricing - Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/plans/developer-platform/
+76. Pricing - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/platform/pricing/
+77. A Workers optimization that reduces your bill - The Cloudflare Blog, 6月 27, 2025にアクセス、 https://blog.cloudflare.com/workers-optimization-reduces-your-bill/
