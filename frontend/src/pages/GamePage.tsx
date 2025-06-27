@@ -6,6 +6,7 @@ import SectorMap from '../components/SectorMap';
 import ShipPanel from '../components/ShipPanel';
 import StationPanel from '../components/StationPanel';
 import TradePanel from '../components/TradePanel';
+import EventPanel from '../components/EventPanel';
 import './GamePage.css';
 
 function GamePage() {
@@ -70,6 +71,7 @@ function GamePage() {
         <div className="right-panel">
           {selectedSector && <StationPanel sector={selectedSector} />}
           {selectedShip && <TradePanel ship={selectedShip} />}
+          <EventPanel />
         </div>
       </div>
     </div>
