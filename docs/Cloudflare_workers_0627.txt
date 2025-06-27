@@ -1,0 +1,843 @@
+﻿Cloudflare Workersにおけるフルスタックアプリケーションの設計：フロントエンドとバックエンドを分離したデプロイメントの決定版ガイド
+
+
+
+
+Part 1: 基本概念とアーキテクチャの選択
+
+
+Cloudflare Workersプラットフォーム上で堅牢なフルスタックアプリケーションを構築する旅は、まず基本的な概念を理解し、プロジェクトの要件に最も適したアーキテクチャを選択することから始まります。この最初のセクションでは、2つの主要なアーキテクチャパターンを深く掘り下げ、そのトレードオフを分析します。さらに、多くの開発者が混乱する原因となるCloudflareの「魔法のような」リクエストルーティングの仕組みを解明し、その挙動を完全に制御するための具体的な設定方法を提示します。この foundational な知識は、続く実装ガイドのすべての意思決定の基盤となります。
+
+
+Section 1: 主要なアーキテクチャパターン
+
+
+Cloudflare上でフルスタックアプリケーションを構築する際には、主に2つのアーキテクチャモデルが存在します。それぞれのモデルは、デプロイメントの単純さ、コード管理の容易さ、そして将来的なスケーラビリティの観点から異なるトレードオフを持っています。
+
+
+モノリシックWorker（単一ワーカーモデル）
+
+
+このアプローチでは、フロントエンドの静的アセット（ReactやVueなどで構築されたSPA）とバックエンドAPIの両方を、単一のCloudflare Workerデプロイメントで提供します 1。このモデルの最大の利点は、その単純さにあります。デプロイメントと管理は単一の
+wrangler.toml設定ファイルと単一のwrangler deployコマンドで完結するため、プロジェクトの初期段階や小規模なチームにとっては非常に魅力的です。
+この構成では、Workerのコード内でパスに基づいたルーティングロジックを実装します。例えば、/api/で始まるリクエストはAPIロジックで処理し、それ以外のリクエストは静的アセットを提供するように分岐させます 1。
+
+
+分散Workers（マイクロサービスモデル）
+
+
+このモデルでは、フロントエンドとバックエンドを物理的に分離し、それぞれを独立したWorkerとしてデプロイします。通常、フロントエンドの静的アセットを専門に提供するWorkerと、バックエンドAPIロジックを実行する一つ以上のWorkerで構成されます。このアーキテクチャは、関心の分離を徹底し、各コンポーネントの独立した開発・デプロイサイクルを可能にします 2。
+このモデルの核心技術はService Bindingsです。これにより、フロントエンドWorkerとバックエンドWorker間での安全かつ低遅延な通信が実現されます 3。バックエンドWorkerは公開されたルートを持つ必要がなく、Service Bindingを介してフロントエンドWorkerからのみ呼び出されるように設定できるため、セキュリティが大幅に向上します。
+
+
+アーキテクチャの選択：単純さとスケーラビリティのトレードオフ
+
+
+これら2つのモデルの選択は、単なる技術的な好みではなく、プロジェクトの現在および将来の要件、チームの構造、そして開発ワークフローに深く関わる戦略的な決定です。
+モノリシックモデルは、迅速な立ち上げと単一リポジトリでの管理の容易さを提供します。しかし、アプリケーションが成長し、機能が複雑化するにつれて、単一のコードベースは肥大化し、ルーティングロジック（例：if (url.pathname.startsWith('/api/'))）が複雑になりがちです。
+一方、分散モデルは初期設定の複雑さ（Service Bindingsの設定、複数のデプロイメント管理など）を伴いますが、モダンなマイクロサービスの原則に沿っています。これにより、異なるチームがアプリケーションの異なる部分を所有し、独立してリリースサイクルを回すことが可能になります 2。この点は、技術的な側面だけでなく、組織的なスケーラビリティにおいても極めて重要です。CI/CDパイプラインの設計も、このアーキテクチャ選択に影響を受けます 4。
+以下の表は、これら2つのアーキテクチャパターンの主要な側面を比較したものです。この比較は、プロジェクトの初期段階で情報に基づいた意思決定を行うための指針となります。
+Table 1: アーキテクチャパターン比較（モノリシック vs. 分散）
+Aspect
+	モノリシックWorker
+	分散Workers（マイクロサービス）
+	デプロイメントの複雑さ
+	低い。単一のwrangler.tomlとデプロイコマンドで管理。
+	高い。複数のWorkerとService Bindingsの設定、デプロイ順序の管理が必要。
+	コード管理
+	単一のコードベースで管理が容易だが、大規模化すると複雑性が増大する。
+	関心の分離が明確。コードベースがクリーンに保たれるが、リポジトリ間の連携が必要。
+	スケーラビリティ
+	アプリケーションの特定部分のみをスケールさせるのが難しい。
+	各サービス（Worker）を独立してスケール可能。マイクロサービスアーキテクチャの利点を享受できる。
+	パフォーマンス
+	すべてのリクエストが単一のWorkerを通過する可能性があるため、最適化が不十分な場合はボトルネックになり得る。
+	Service BindingによるWorker間通信はゼロレイテンシで、オーバーヘッドがない 3。静的アセットは直接配信可能。
+	セキュリティ
+	攻撃対象領域が共有される。単一の脆弱性が全体に影響を及ぼす可能性がある。
+	バックエンドをプライベート化（公開ルートなし）できるため、攻撃対象領域を大幅に削減可能 3。
+	チームワークフロー
+	小規模チームや個人開発者に最適。単一の責任範囲で開発が進行する。
+	大規模チームや複数チームでの並行開発に最適。各チームが独立した所有権とリリースサイクルを持つことができる 2。
+	
+
+Section 2: リクエストルーティングの解明
+
+
+Cloudflare Workersで静的アセットとAPIを共存させる際に開発者が直面する最大の混乱は、リクエストがどのように処理されるかという「魔法のような」挙動にあります。このセクションでは、そのルーティングロジックを徹底的に解明し、wrangler.tomlの設定を通じてその挙動を完全に制御する方法を示します。
+
+
+デフォルトの挙動：アセットファースト
+
+
+プロジェクトに静的アセットとWorkerスクリプトの両方が設定されている場合、Cloudflareのデフォルトのルーティング動作はアセットファーストです 5。具体的には、受信リクエストのパスが
+[assets]設定で指定されたディレクトリ内のファイルと一致するかどうかを最初にチェックします。一致するファイルが見つかった場合、その静的アセットが直接配信され、Workerのコードは一切呼び出されません 1。これは、パフォーマンスを最大化し、不要なWorkerの実行を避けるための効率的な設計ですが、この挙動を理解していないと、APIエンドポイントへのリクエストが意図せず静的ファイルとして処理されてしまう（あるいはその逆）という混乱が生じます。
+一致するアセットがない場合にのみ、リクエストはWorkerスクリプトに渡され、そのfetchハンドラが実行されます 1。
+
+
+フローの制御：wrangler.tomlディレクティブ
+
+
+幸いなことに、このデフォルトの挙動はwrangler.tomlファイルの[assets]ブロック内のディレクティブを通じて詳細に制御できます。
+* not_found_handling = "single-page-application"
+これは、特にSPA（Single Page Application）をデプロイする際に不可欠な設定です 1。この設定を行うと、リクエストされたパスが静的アセットに一致しない場合（例：
+/users/123のようなクライアントサイドのルート）、Cloudflareは404 Not Foundを返す代わりに、ステータスコード200で/index.htmlの内容を返します 7。これにより、ブラウザは
+index.htmlをロードし、SPAのクライアントサイドルーターが起動して、適切なビューを描画することができます。
+* run_worker_first
+これはルーティングロジックを制御するための最も強力なディレクティブであり、2つの形式があります。
+   1. run_worker_first = true: これは「鈍器（blunt instrument）」とも表現される設定で 5、
+すべてのリクエストを静的アセットのチェックよりも先にWorkerスクリプトに強制的に送ります。この場合、WorkerはリクエストをAPIコールとして処理するか、あるいはenv.ASSETS.fetch(request)を呼び出して静的アセットサーバーに処理を委任するかを、コード内で明示的に判断する必要があります 6。認証チェックなど、すべてのアセットアクセスに前処理を挟みたい場合に有効です。
+   2. run_worker_first = [ "/api/*", "!/api/docs/*" ]: こちらはより洗練された強力なアプローチです。ルートパターンの配列を指定することで、Workerを起動するリクエストを選択的に定義できます 8。この設定は、モノリシックなフルスタックアプリケーションに推奨されるパターンです。
+/api/*のようなAPI関連のパスのみをWorkerに送り、それ以外の静的アセットへのリクエストはCloudflareの最適化されたアセット配信パスを通過させることができます。これにより、設定レベルでAPIトラフィックと静的アセットトラフィックをクリーンに分離できます。
+このrun_worker_firstの配列形式とnot_found_handling = "single-page-application"を組み合わせることで、モノリシックWorkerにおける理想的なルーティングが実現します。
+      1. /api/*へのリクエストはWorkerに送られます。
+      2. /favicon.icoや/assets/app.jsのような既存の静的ファイルへのリクエストは、Workerをバイパスして直接配信され、パフォーマンスとコストが最適化されます。
+      3. /dashboardや/profileのようなSPAのルートへのリクエストは、静的ファイルに一致せず、not_found_handlingの設定により/index.htmlが返され、クライアントサイドのルーターが処理を引き継ぎます。
+この設定により、Workerコード内の複雑なif/elseルーティングロジックを排除し、宣言的にルーティングを管理できます 7。
+
+
+将来の展望：_routes.json
+
+
+GitHubの議論では、Cloudflare Pagesのルーティングと同様の、より宣言的なルーティングシステムを導入するために_routes.jsonファイルを使用する提案がなされています 5。この提案は、将来的には
+run_worker_firstを非推奨にすることを目指しています。しかし、現在の公式ドキュメントに基づくと、run_worker_firstにパスの配列を指定する方法が、Workersでこのユースケースを実現するための標準的かつサポートされている方法です 8。この情報は、現在のベストプラクティスとプラットフォームの進化の方向性の両方を理解する上で役立ちます。
+以下の表は、これらのルーティング設定オプションをまとめたものです。
+Table 2: ルーティング設定の詳細
+
+
+Configuration
+	wrangler.tomlでの構文例
+	リクエストフローの挙動
+	主なユースケース
+	デフォルト
+	[assets]ブロックのみ
+	アセットファースト: 静的アセットが存在すればそれを配信。なければWorkerを起動。
+	静的サイトにAPI機能を追加する基本的な構成。
+	SPAハンドリング
+	not_found_handling = "single-page-application"
+	アセットが見つからない場合、404ではなくindex.htmlを返す。
+	React, Vue, AngularなどのSPAのクライアントサイドルーティング。
+	Workerファースト（全体）
+	run_worker_first = true
+	ワーカーファースト: 全リクエストをまずWorkerに送る。Workerがアセット配信を決定する。
+	全リクエストに認証やロギングなどのミドルウェアを適用したい場合。
+	Workerファースト（選択的）
+	run_worker_first = [ "/api/*" ]
+	選択的ワーカーファースト: /api/*へのリクエストのみWorkerに送り、他はアセットファーストで処理。
+	APIとSPAを単一Workerで提供する際の最も効率的で推奨される構成。
+	
+
+Part 2: 実装ガイド：分散Workersパターン
+
+
+より堅牢でスケーラブルなアーキテクチャを求める開発者のために、このパートでは分散Workersパターンを構築するための prescriptive（規範的）なステップバイステップガイドを提供します。このパターンは、フロントエンドとバックエンドを明確に分離し、それぞれを独立して管理・デプロイすることを可能にします。
+
+
+Section 3: スケーラビリティのためのプロジェクト構造：モノレポ
+
+
+関連しつつも独立したフロントエンドとバックエンドのプロジェクトを管理するためのベストプラクティスとして、モノレポ（monorepo）の採用を推奨します 4。モノレポは、単一のリポジトリ内で複数のアプリケーションやパッケージを管理する手法です。これにより、依存関係の管理が簡素化され、フロントエンドとバックエンド間でのコード共有（例えばTypeScriptの型定義など）が容易になります。
+ここでは、最新のパッケージマネージャであるpnpmのワークスペース機能を利用した具体的なディレクトリ構造を提案します。
+
+
+
+
+
+
+/my-fullstack-app
+├── package.json
+├── pnpm-workspace.yaml
+├── apps/
+│   ├── frontend/
+│   │   ├── public/               # 静的アセットのソース
+│   │   ├── src/                  # APIプロキシのソースコード
+│   │   ├── package.json
+│   │   └── wrangler.toml         # フロントエンドWorkerの設定
+│   └── backend/
+│       ├── src/                  # APIのソースコード
+│       ├── package.json
+│       └── wrangler.toml         # バックエンドWorkerの設定
+└── packages/
+   └── shared-types/             # 共有する型定義
+       └── index.ts
+
+この構造は、CI/CDシステム（例：GitHub Actions）と組み合わせることで、関連するコードが変更された場合にのみビルドとデプロイをトリガーするような、効率的なパイプラインを構築する基盤となります 9。
+
+
+Section 4: フロントエンドWorkerの設定
+
+
+まず、apps/frontendディレクトリ内のフロントエンドWorkerを設定します。このWorkerの主な責務は、ビルドされたSPAの静的アセットを配信することです。当初、このWorkerはコードを一切持たず、アセット配信の設定のみを行います。
+apps/frontend/wrangler.tomlの初期設定:
+
+
+Ini, TOML
+
+
+
+
+name = "my-app-frontend"
+compatibility_date = "2024-03-15"
+
+# このWorkerは静的アセットのみを配信する
+[assets]
+directory = "./dist" # フロントエンドフレームワークのビルド出力ディレクトリを想定
+
+この時点での重要な点は、mainエントリポイントがwrangler.tomlに存在しないことです。分散モデルにおいて、あるWorkerが純粋にUIの静的アセットを配信するだけの場合、JavaScript/TypeScriptのエントリポイントは不要です。このデプロイメントは、静的アセットのアップロードのみで構成されます。これにより、フロントエンドの「Worker」は、実質的にCloudflareの静的アセットホスティング機能のための設定ファイルとなり 10、複雑さと潜在的な障害点を削減します。これは、分散パターンにおける微妙ながらも重要な簡素化です。
+
+
+Section 5: バックエンドAPI Workerの設定
+
+
+次に、apps/backendディレクトリ内のバックエンドAPI Workerを設定します。このWorkerは、APIロジックを実行するためのmainエントリポイントを持ちますが、外部から直接アクセスされることを防ぐため、公開されたルートを持ちません。
+apps/backend/wrangler.tomlの設定:
+
+
+Ini, TOML
+
+
+
+
+name = "my-app-backend"
+main = "src/index.ts"
+compatibility_date = "2024-03-15"
+
+# 'routes'や'workers_dev = true'キーは含めない。
+# これにより、このWorkerは公開されたURLを持たないプライベートな状態になる。
+
+# D1データベースなどのバインディングはここに記述する
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+この設定により、my-app-backend Workerはデプロイされますが、直接呼び出すためのURLは存在しません。これは、後のステップでService Bindingを介してのみアクセスされる、安全な内部サービスとなります。
+
+
+Section 6: Service Bindingsによる連携
+
+
+フロントエンドとバックエンドを連携させるために、Service Bindingsを使用します。これは、呼び出し元であるフロントエンドWorkerのwrangler.tomlを更新して、バックエンドWorkerへのService Bindingを追加することで実現します。この設定により、フロントエンドWorkerはバックエンドWorkerをプライベートに呼び出す権限を得ます。
+apps/frontend/wrangler.tomlの更新:
+
+
+Ini, TOML
+
+
+
+
+name = "my-app-frontend"
+# APIリクエストをプロキシするためにmainエントリポイントが必要になる
+main = "src/index.ts"
+compatibility_date = "2024-03-15"
+
+[assets]
+directory = "./dist"
+# Workerコードからアセットにアクセスするためのバインディング
+binding = "ASSETS"
+
+# バックエンドWorkerへのService Binding
+[[services]]
+binding = "API_BACKEND" # Workerコード内で使用する変数名
+service = "my-app-backend" # ターゲットとなるバックエンドWorkerの名前
+
+この設定変更に伴い、フロントエンドWorkerにはAPIリクエストをプロキシするためのロジックが必要になります。apps/frontend/src/index.tsを作成し、以下のように実装します。このコードは、リクエストのパスを判断し、/apiで始まるリクエストをバックエンドWorkerに転送し、それ以外のリクエストは静的アセットを配信するように動作します。
+apps/frontend/src/index.tsの実装:
+
+
+TypeScript
+
+
+
+
+interface Env {
+ // wrangler.tomlで定義したService Binding
+ API_BACKEND: Fetcher;
+ // wrangler.tomlで定義したAssets Binding
+ ASSETS: Fetcher;
+}
+
+export default {
+ async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+   const url = new URL(request.url);
+
+   // '/api/'で始まるパスのリクエストをバックエンドWorkerにプロキシする
+   if (url.pathname.startsWith('/api/')) {
+     // env.API_BACKENDはService Bindingを表すFetcherオブジェクト
+     // 元のリクエストをそのままバックエンドに渡す
+     return env.API_BACKEND.fetch(request);
+   }
+
+   // それ以外のリクエストは静的アセットとして処理する
+   return env.ASSETS.fetch(request);
+ },
+};
+
+このアーキテクチャは、単にサービスを呼び出す以上の価値を提供します。Service Bindingsは「ゼロオーバーヘッドまたは追加のレイテンシ」で動作し、呼び出し元と呼び出し先のWorkerが同じ物理サーバー上の同じスレッドで実行される可能性があるため、極めて高速です 3。
+さらに重要なのは、この構成が安全な、ゼロレイテンシの内部ネットワークを構築することです。バックエンドWorkerはパブリックインターネットからルーティング不可能であり、明示的なバインディングを持つフロントエンドWorkerからの呼び出しのみを受け付けます 3。これは、Cloudflareのネットワーク内に事実上のプライベートVPCのような環境を作り出すことに等しく、たとえ自社の別の公開サービスであっても、パブリックAPIコールを行うよりも本質的に安全です。このアーキテクチャでは、バックエンドはフロントエンドからのリクエストを本質的に信頼できるため、認証メカニズムも簡素化できます。
+
+
+Part 3: 本番品質のバックエンドAPIの構築
+
+
+分散アーキテクチャの基盤を築いた上で、次はこの構造内で動作する、本番環境に耐えうる品質のバックエンドAPIを実装します。このパートでは、Cloudflare Workersエコシステムでベストインクラスとされるツール、HonoとD1を使用し、APIロジックの実装から永続化、セキュリティ確保までの具体的な手順を解説します。
+
+
+Section 7: HonoによるAPIロジックの実装
+
+
+APIのルーティングとロジックの実装には、エッジ環境に最適化された軽量かつ高速なフレームワークであるHonoを採用します 11。Honoは、その小さなバンドルサイズと優れたパフォーマンスにより、Cloudflare Workersと非常に相性が良いです。
+apps/backend/src/index.tsファイルを編集し、Honoを使ってAPIエンドポイントを定義します。Honoは、リクエストの解析、ミドルウェアの適用、JSONレスポンスの生成などを簡潔な構文で記述できます。
+apps/backend/src/index.tsの実装例:
+
+
+TypeScript
+
+
+
+
+import { Hono } from 'hono';
+
+// wrangler.tomlで定義したバインディングの型を定義する
+type Bindings = {
+ DB: D1Database;
+ // 他のバインディング（KV, R2, Secretなど）もここに追加
+};
+
+// Honoアプリケーションを初期化し、バインディングの型をジェネリクスで渡す
+const app = new Hono<{ Bindings: Bindings }>();
+
+// GET /api/posts - すべての投稿を取得するエンドポイント
+app.get('/api/posts', async (c) => {
+ try {
+   // D1データベースから投稿を取得
+   // c.envを通じてバインディングにアクセスできる
+   const { results } = await c.env.DB.prepare(
+     "SELECT id, title, published_at FROM posts ORDER BY published_at DESC"
+   ).all();
+   return c.json(results);
+ } catch (e) {
+   console.error(e);
+   return c.json({ error: 'Failed to fetch posts' }, 500);
+ }
+});
+
+// POST /api/posts - 新しい投稿を作成するエンドポイント
+app.post('/api/posts', async (c) => {
+ try {
+   const { title, content } = await c.req.json<{ title: string; content: string }>();
+   if (!title ||!content) {
+     return c.json({ error: 'Title and content are required' }, 400);
+   }
+   
+   await c.env.DB.prepare(
+     "INSERT INTO posts (title, content) VALUES (?,?)"
+   ).bind(title, content).run();
+   
+   return c.json({ message: 'Post created successfully' }, 201);
+ } catch (e) {
+   console.error(e);
+   return c.json({ error: 'Failed to create post' }, 500);
+ }
+});
+
+// Honoアプリケーションをエクスポートする
+// これにより、Cloudflare Workersのfetchハンドラが自動的に提供される
+export default app;
+
+
+
+Section 8: Cloudflare D1による永続化
+
+
+APIの状態を永続化するために、CloudflareのネイティブなサーバーレスSQLデータベースであるD1を利用します。D1は、Workersからのグローバルなアクセスに最適化されており、使い慣れたSQLiteのSQL構文で操作できます 14。
+D1の利用は以下のステップで行います。
+      1. データベースの作成:
+Wrangler CLIを使用して、新しいD1データベースを作成します。このコマンドは、データベースのdatabase_idなど、次のステップで必要となる設定情報を出力します 15。
+Bash
+npx wrangler d1 create my-app-db
+
+      2. D1バインディングの設定:
+ステップ1で得られた情報を使って、バックエンドWorkerのwrangler.tomlにD1バインディングを追加します。これにより、Workerコードからenv.DBのような形でデータベースにアクセスできるようになります 15。
+Ini, TOML
+# apps/backend/wrangler.toml
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+      3. データベーススキーマの適用:
+schema.sqlファイルを作成し、テーブル定義を記述します。そして、Wranglerを使ってデータベースにスキーマを適用します。
+SQL
+-- migrations/0001_create_posts_table.sql
+CREATE TABLE posts (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ title TEXT NOT NULL,
+ content TEXT NOT NULL,
+ published_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+Bash
+npx wrangler d1 migrations apply my-app-db --local # ローカル開発用
+npx wrangler d1 migrations apply my-app-db --remote # 本番環境用
+
+      4. Honoからのクエリ実行:
+Section 7のコード例で示したように、Honoのコンテキストオブジェクトcを通じてc.env.DBとしてD1にアクセスします 12。SQLインジェクション攻撃を防ぐため、ユーザーからの入力をクエリに含める際は、常に
+?プレースホルダーを用いたプリペアドステートメントを使用することが極めて重要です 16。
+
+
+Section 9: APIエンドポイントの保護
+
+
+本番環境のAPIには、堅牢なセキュリティ対策が不可欠です。ここでは、認証とレートリミットという2つの重要なセキュリティレイヤーを実装します。
+
+
+JWTによる認証
+
+
+APIエンドポイントを保護するために、JSON Web Token (JWT) ベースの認証を導入します。Honoは、このためのミドルウェアを標準で提供しており、簡単に実装できます 18。
+まず、ユーザーが認証情報（例：メールアドレスとパスワード）を送信してJWTを取得するためのログインエンドポイントを作成します。トークンの生成にはHonoのsignヘルパーを使用します 19。
+次に、保護したいエンドポイントグループにjwtミドルウェアを適用します。このミドルウェアは、リクエストヘッダーからJWTを検証し、無効な場合はアクセスを拒否します。
+apps/backend/src/index.tsにJWT認証を追加する例:
+
+
+TypeScript
+
+
+
+
+import { Hono } from 'hono';
+import { jwt, sign, verify } from 'hono/jwt';
+import { secureCompare } from 'hono/utils/secure-compare';
+
+//... (Bindingsとappの初期化は省略)
+
+// ログインエンドポイント
+app.post('/api/login', async (c) => {
+ const { username, password } = await c.req.json();
+ 
+ // 実際のアプリケーションでは、データベースからユーザーを検証する
+ // ここでは簡単のためハードコード
+ const expectedUser = 'admin';
+ const expectedPass = c.env.ADMIN_PASSWORD; // Secretから取得
+
+ if (!secureCompare(username, expectedUser) ||!secureCompare(password, expectedPass)) {
+   return c.json({ error: 'Invalid credentials' }, 401);
+ }
+
+ const payload = {
+   sub: username,
+   role: 'admin',
+   exp: Math.floor(Date.now() / 1000) + (60 * 60), // 1時間有効
+ };
+ const secret = c.env.JWT_SECRET; // Secretから取得
+ const token = await sign(payload, secret);
+
+ return c.json({ token });
+});
+
+// 認証が必要なルートグループ
+const auth = app.use('/api/admin/*', jwt({ secret: c.env.JWT_SECRET }));
+
+auth.get('/api/admin/profile', (c) => {
+ const payload = c.get('jwtPayload');
+ return c.json({ message: `Welcome, ${payload.sub}`, payload });
+});
+
+
+
+レートリミット
+
+
+ブルートフォース攻撃などからAPIを保護するために、レートリミットを実装します。Cloudflareはダッシュボードから設定するレートリミットルールの他に、Workerコード内からプログラム的にレートリミットを適用できるRate Limiting APIを提供しています 20。これにより、より動的で柔軟な制御が可能になります。
+まず、wrangler.tomlにレートリミッタのバインディングを追加します。
+
+
+Ini, TOML
+
+
+
+
+# apps/backend/wrangler.toml
+[[rate_limiters]]
+binding = "RATE_LIMITER"
+namespace_id = "1001" # アカウント内で一意のID
+simple = { limit = 10, period = 60 } # 60秒あたり10リクエスト
+
+次に、Honoのミドルウェアとして、このレートリミッタを特定のエンドポイント（例えばログインエンドポイント）に適用します。
+Honoでレートリミットを適用する例:
+
+
+TypeScript
+
+
+
+
+//... (appの初期化は省略)
+
+// レートリミットを適用するミドルウェア
+app.use('/api/login', async (c, next) => {
+ const ip = c.req.header('CF-Connecting-IP');
+ const { success } = await c.env.RATE_LIMITER.limit({ key: ip });
+ 
+ if (!success) {
+   return c.text('Rate limit exceeded', 429);
+ }
+ 
+ await next();
+});
+
+// ログインエンドポイントの定義 (上記参照)
+app.post('/api/login', async (c) => { /*... */ });
+
+
+
+Section 10: シークレット管理のベストプラクティス
+
+
+APIキーやデータベースのパスワードなどの機密情報は、コードにハードコーディングするのではなく、安全に管理する必要があります。Cloudflareは2つの主要なシークレット管理方法を提供しており、その選択はシークレットのスコープ（適用範囲）に基づいて行うべきです。
+         1. Per-Worker Secrets: wrangler secret putコマンドで設定し、ローカル開発では.dev.varsファイルで管理します。この方法は、シークレットが特定の単一Workerにのみ関連付けられる場合に適しています 21。
+         2. Secrets Store: アカウントレベルでシークレットを集中管理するソリューションです。一度作成したシークレットを複数のWorkerにバインディングとしてアタッチできます 22。これは、データベースのパスワードのように複数のマイクロサービスで共有される必要があるシークレットに最適な方法です。
+この選択は、単なる便宜上の問題ではなく、セキュリティと保守性に関わる重要な決定です。共有シークレットをPer-Worker Secretsで管理しようとすると、同じシークレットが複数の場所に重複して存在することになり、ローテーション（定期的な更新）が複雑化し、ヒューマンエラーのリスクが増大します。Secrets Storeを使用すれば、シークレットを中央で一度更新するだけで、そのシークレットにバインドされているすべてのWorkerが新しい値を使用するようになります。これは、セキュリティ認証情報における「Don't Repeat Yourself (DRY)」原則の適用です 23。
+Table 3: シークレット管理アプローチの比較
+
+
+Method
+	スコープ
+	管理方法
+	理想的なユースケース
+	Per-Worker Secrets
+	Worker単位
+	wrangler secret putコマンド、ダッシュボードのWorker設定画面
+	特定のWorkerのみが使用するサードパーティAPIキーなど、スコープが限定されたシークレット。
+	Secrets Store
+	アカウント単位
+	Secrets Store専用のWranglerコマンド、ダッシュボードのSecrets Store画面
+	データベース接続情報など、複数のWorkerやサービス間で共有する必要があるシークレット。
+	
+
+Part 4: 運用、テスト、および最適化
+
+
+アプリケーションを構築し、デプロイした後のライフサイクル全体を管理することは、本番環境での成功に不可欠です。この最終パートでは、自動化されたデプロイメントパイプラインの構築、堅牢なテスト戦略の確立、そしてパフォーマンスとコストを両立させるための高度な最適化手法について詳述します。
+
+
+Section 11: CI/CDパイプラインによるデプロイの自動化
+
+
+手動でのデプロイはエラーが発生しやすく、スケールしません。継続的インテグレーション/継続的デプロイメント（CI/CD）パイプラインを導入することで、ビルド、テスト、デプロイのプロセスを自動化し、一貫性と信頼性を確保します 25。
+ここでは、GitHub Actionsを使用した本番品質のワークフローファイルの完全な例を示します。このワークフローは、Part 2で提案したモノレポ構造を前提としています。
+.github/workflows/deploy.ymlの実装例:
+
+
+YAML
+
+
+
+
+name: Deploy Full-Stack Application
+
+on:
+ push:
+   branches:
+     - main
+
+jobs:
+ test:
+   runs-on: ubuntu-latest
+   steps:
+     - name: Checkout repository
+       uses: actions/checkout@v4
+
+     - name: Setup pnpm
+       uses: pnpm/action-setup@v2
+       with:
+         version: 8
+
+     - name: Setup Node.js
+       uses: actions/setup-node@v4
+       with:
+         node-version: '20'
+         cache: 'pnpm'
+
+     - name: Install dependencies
+       run: pnpm install
+
+     - name: Run tests
+       run: pnpm test
+
+ deploy:
+   runs-on: ubuntu-latest
+   needs: test # テストジョブの成功を待つ
+   steps:
+     - name: Checkout repository
+       uses: actions/checkout@v4
+
+     - name: Setup pnpm
+       uses: pnpm/action-setup@v2
+       with:
+         version: 8
+
+     - name: Setup Node.js
+       uses: actions/setup-node@v4
+       with:
+         node-version: '20'
+         cache: 'pnpm'
+
+     - name: Install dependencies
+       run: pnpm install
+
+     - name: Deploy Backend Worker
+       # フロントエンドのService Bindingが依存するため、バックエンドを先にデプロイ
+       run: pnpm --filter my-app-backend deploy
+       env:
+         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+     - name: Deploy Frontend Worker
+       run: pnpm --filter my-app-frontend deploy
+       env:
+         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+     - name: Purge Cloudflare Cache
+       # デプロイ後、ユーザーが即座に最新のフロントエンドを受け取れるようにキャッシュをパージ
+       run: |
+         curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/purge_cache" \
+         -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+         -H "Content-Type: application/json" \
+         --data '{"purge_everything":true}'
+
+このワークフローを機能させるには、GitHubリポジトリのSettings > Secrets and variables > Actionsで以下のシークレットを設定する必要があります 26:
+         * CLOUDFLARE_API_TOKEN: Cloudflare APIと通信するためのトークン。
+         * CLOUDFLARE_ACCOUNT_ID: CloudflareアカウントのID。
+         * CLOUDFLARE_ZONE_ID: キャッシュをパージする対象のゾーンID。
+キャッシュのパージは、デプロイメントの最終ステップとして重要です。これにより、CDN上にキャッシュされた古いアセットがユーザーに配信されるのを防ぎます 27。
+{"purge_everything":true}は最も簡単な方法ですが、より大規模なアプリケーションでは、次のセクションで説明するタグベースのパージが推奨されます 28。
+
+
+Section 12: パフォーマンスとコストのための高度なキャッシング
+
+
+Cloudflareのキャッシュを最大限に活用することは、パフォーマンス向上とコスト削減の両方に直結します。静的アセットの自動キャッシュに加え、APIレスポンスに対しても戦略的なキャッシュを適用できます。
+
+
+API GETレスポンスのキャッシング
+
+
+頻繁にアクセスされるが、内容は頻繁に変わらない、かつユーザー固有ではないGETリクエスト（例：公開ブログ記事の一覧）のレスポンスは、キャッシュするのに理想的です。Honoバックエンド内でCache API (caches.default.put) を使用して、レスポンスをCloudflareのエッジキャッシュに保存できます 29。
+HonoでAPIレスポンスをキャッシュする例:
+
+
+TypeScript
+
+
+
+
+app.get('/api/public-posts', async (c) => {
+ const cache = caches.default;
+ const cacheKey = new Request(c.req.url, c.req);
+ 
+ // キャッシュを確認
+ let response = await cache.match(cacheKey);
+ if (response) {
+   console.log('Cache hit!');
+   return response;
+ }
+ console.log('Cache miss.');
+
+ // キャッシュがない場合はD1からデータを取得
+ const { results } = await c.env.DB.prepare("SELECT * FROM posts WHERE is_public = 1").all();
+ 
+ response = c.json(results);
+ // Cache-Controlヘッダーでキャッシュ期間を制御 (例: 10分)
+ response.headers.set('Cache-Control', 'public, max-age=600');
+ 
+ // 非同期でキャッシュに保存
+ c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()));
+ 
+ return response;
+});
+
+
+
+きめ細やかなキャッシュ無効化
+
+
+purge_everythingは強力ですが、サイト全体のキャッシュを無効化するため、キャッシュヒット率を一時的に大幅に低下させます。より洗練されたアプローチは、Cache Tagsを使用することです 32。
+レスポンスにCache-Tagヘッダーを追加することで、コンテンツをグループ化できます。例えば、ユーザーIDや投稿IDをタグとして付与します。
+
+
+TypeScript
+
+
+
+
+// ユーザープロファイルのレスポンスにタグを追加
+app.get('/api/users/:id', async (c) => {
+ const userId = c.req.param('id');
+ //... ユーザーデータを取得...
+ const response = c.json(userData);
+ response.headers.append('Cache-Tag', `user-profile,user-${userId}`);
+ return response;
+});
+
+その後、特定のユーザーのデータが更新された際に、APIを介してそのユーザーに関連するタグのみをパージできます。これにより、他のキャッシュされたコンテンツに影響を与えることなく、特定のデータセットのみを無効化できます 27。この手法は、CI/CDパイプラインに組み込むことで、特定の機能更新に関連するキャッシュのみを選択的にパージすることも可能にします。
+
+
+Section 13: 堅牢なテスト戦略
+
+
+信頼性の高いアプリケーションを構築するには、体系的なテストが不可欠です。Cloudflareは、本番環境と同じworkerdランタイム上でテストを実行できるVitestとの統合（@cloudflare/vitest-pool-workers）を推奨しています 34。
+
+
+ユニットテスト
+
+
+Honoは、個々のルートやヘルパー関数を分離してテストするのを容易にします 35。Honoアプリケーションインスタンスの
+requestメソッドを使用して、仮想的なリクエストを送信し、返されるレスポンスをアサーションできます。
+Honoルートのユニットテスト例:
+
+
+TypeScript
+
+
+
+
+// test/backend.test.ts
+import { describe, it, expect } from 'vitest';
+import app from '../apps/backend/src/index'; // Honoアプリをインポート
+
+describe('Backend API', () => {
+ it('GET /api/posts should return an array', async () => {
+   // モックされたD1バインディングを作成
+   const mockDb = {
+     prepare: () => ({
+       all: async () => ({
+         results:,
+       }),
+     }),
+   };
+   
+   // app.requestの第3引数でenvをモックする
+   const res = await app.request('/api/posts', {}, { DB: mockDb });
+   
+   expect(res.status).toBe(200);
+   const body = await res.json();
+   expect(Array.isArray(body)).toBe(true);
+   expect(body.title).toBe('Test Post');
+ });
+});
+
+
+
+統合テスト
+
+
+分散アーキテクチャの真価をテストするには、Worker間のインタラクションを検証する統合テストが必要です。Miniflare（Vitest統合の内部で使用されている）は、Service BindingsやD1データベースを含むすべてのバインディングをテスト環境内でシミュレートする能力を持っています 36。
+これにより、フロントエンドWorkerへのリクエストが正しくバックエンドWorkerにプロキシされ、バックエンドがモックD1からデータを取得してレスポンスを返すという、エンドツーエンドのシナリオをテストできます。
+
+
+Section 14: コスト分析と最適化
+
+
+Cloudflare Workersの料金体系を理解し、コストを最適化することは、持続可能な運用にとって重要です。ここでは、提案した分散アーキテクチャのコスト構成要素を分析し、最適化戦略を提示します。料金はWorkers Paidプラン（月額$5ベース）を前提とします 39。
+
+
+コスト構成要素
+
+
+         1. Workers Requests:
+課金対象となるのは、Workerを起動するリクエストです。このアーキテクチャでは、フロントエンドへのAPIプロキシリクエストと、それによって呼び出されるバックエンドWorkerの実行がカウントされます。重要なのは、静的アセットへのリクエストは無料で無制限であることです 40。
+run_worker_firstを適切に設定することで、不要なWorker実行を避け、コストを抑えることができます。
+         2. Workers CPU Time:
+CPU時間は、特に計算量の多いタスクにおける主要なコストドライバーです。コードの効率化、不要な処理の削減、そして積極的なキャッシングにより、CPU使用時間を短縮できます 40。
+         3. D1 Usage:
+D1の料金は、読み取られた行数（rows read）、書き込まれた行数（rows written）、およびストレージ使用量に基づいています。D1はアイドル時間に対して課金されない従量課金制であるため、非常にコスト効率が高いです 14。
+
+
+最適化戦略
+
+
+            * 積極的なキャッシング: APIレスポンスを積極的にキャッシュすることで、D1の読み取り回数とWorkerのCPU時間を大幅に削減できます。
+            * 効率的なルーティング: フロントエンドWorkerがAPIコールのみをプロキシし、静的アセットはCloudflareのエッジから直接無料で配信されるように徹底します。
+            * D1クエリの最適化: 適切なインデックスを作成し、クエリを最適化することで、rows_readを最小限に抑えます。インデックス自体はストレージと書き込みコストをわずかに増加させますが、読み取りコストの削減効果はそれをはるかに上回ることがほとんどです 42。
+            * ストリーミングの活用: KVやR2から大きなファイルを返す場合、レスポンスをストリーミングすることで、Workerがメモリ内にデータを保持する時間を短縮し、GB秒単位で計算されるDurationコスト（Unboundモデルの場合）を削減できます 41。
+
+
+結論：推奨アーキテクチャと次のステップ
+
+
+
+
+総括と推奨事項
+
+
+本レポートでは、Cloudflare Workers上でフロントエンドとバックエンドを分離してデプロイするための2つの主要なアーキテクチャ、モノリシックWorkerと分散Workersを詳細に分析しました。
+            * モノリシックWorkerは、そのデプロイメントの単純さから、小規模なプロジェクトや迅速なプロトタイピングには魅力的です。wrangler.tomlにおけるrun_worker_firstとnot_found_handlingの組み合わせは、単一のWorker内でAPIとSPAを共存させるための洗練された方法を提供します。
+            * しかし、本格的なフルスタックアプリケーションの構築を目指す場合、本レポートではモノレポとService Bindingsを利用した分散Workersパターンを強く推奨します。このアーキテクチャは、以下の点で明確な優位性を持っています。
+            * スケーラビリティ: フロントエンドとバックエンドを独立して開発、デプロイ、スケールさせることができ、将来的な機能追加やチームの拡大に柔軟に対応できます。
+            * セキュリティ: Service Bindingsを利用してバックエンドAPIをプライベート化することで、攻撃対象領域を大幅に削減し、本質的に安全な内部ネットワークを構築できます。
+            * 保守性: 関心の分離が徹底されることで、コードベースはクリーンに保たれ、長期的な保守が容易になります。
+初期設定の複雑さは伴いますが、分散モデルが提供する堅牢性、セキュリティ、そして将来性への投資は、多くの本番アプリケーションにとって賢明な選択です。
+
+
+次のステップへのチェックリスト
+
+
+このガイドを基に、実際にアプリケーションを構築するためのチェックリストを以下に示します。
+            1. [ ] アーキテクチャの選択: プロジェクトの規模と将来性に基づき、モノリシックか分散かを選択します。（本番環境には分散を推奨）
+            2. [ ] プロジェクトのセットアップ: 選択したアーキテクチャに基づき、モノレポ構造（推奨）または単一リポジトリをセットアップします。
+            3. [ ] ルーティングとwrangler.tomlの設定:
+            * 分散モデル: フロントエンドとバックエンドのwrangler.tomlをそれぞれ設定し、Service BindingとAssets Bindingを正しく構成します。
+            * モノリシックモデル: run_worker_firstとnot_found_handlingを適切に設定し、ルーティングを制御します。
+            4. [ ] バックエンドAPIの実装: HonoとD1を使用して、APIエンドポイントとデータベースロジックを構築します。
+            5. [ ] セキュリティの実装: JWTによる認証と、Rate Limiting APIによるレートリミットを重要なエンドポイントに適用します。Secrets StoreまたはPer-Worker Secretsを使用して機密情報を安全に管理します。
+            6. [ ] フロントエンドの実装: SPA（React, Vueなど）を構築し、APIリクエストが/api/*パスを介して行われるようにします。
+            7. [ ] テストの記述: Vitestを使用して、ユニットテストと、Worker間の連携を検証する統合テストを記述します。
+            8. [ ] CI/CDパイプラインの構築: GitHub Actionsワークフローを作成し、テスト、ビルド、デプロイ、キャッシュパージのプロセスを自動化します。
+            9. [ ] デプロイと監視: アプリケーションをデプロイし、Cloudflareダッシュボードでメトリクスとログを監視して、パフォーマンスとコストを継続的に最適化します。
+このガイドが、Cloudflare Workersプラットフォームの強力な機能を最大限に活用し、次世代の高速でスケーラブルなフルスタックアプリケーションを構築するための一助となることを願っています。
+引用文献
+            1. Static Assets · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/
+            2. Scaling Up Different Functionalities in a Single Worker using ..., 6月 27, 2025にアクセス、 https://dev.to/fiberplane/scaling-up-different-functionalities-in-a-single-worker-using-queues-1jm4
+            3. Service bindings - Runtime APIs · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/
+            4. Advanced setups · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/builds/advanced-setups/
+            5. Proposal: Support for _routes.json in Workers with static assets #9143 - GitHub, 6月 27, 2025にアクセス、 https://github.com/cloudflare/workers-sdk/discussions/9143?sort=new
+            6. Worker script · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/routing/worker-script/
+            7. Single Page Application (SPA) - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/
+            8. Configuration and Bindings · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/static-assets/binding/
+            9. Deploying CloudFlare Workers via CloudFlare Pages in a Turborepo monorepo · GitHub, 6月 27, 2025にアクセス、 https://gist.github.com/danawoodman/0413b09a3f97db0b8eec6e6d707ef5b7
+            10. Static assets · Cloudflare for Platforms docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/configuration/static-assets/
+            11. Hono - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/framework-guides/web-apps/more-web-frameworks/hono/
+            12. Cloudflare Workers - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/getting-started/cloudflare-workers
+            13. The story of web framework Hono, from the creator of Hono - The Cloudflare Blog, 6月 27, 2025にアクセス、 https://blog.cloudflare.com/the-story-of-web-framework-hono-from-the-creator-of-hono/
+            14. Overview · Cloudflare D1 docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/d1/
+            15. Build a Staff Directory Application - D1 - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/d1/tutorials/build-a-staff-directory-app/
+            16. Getting started · Cloudflare D1 docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/d1/get-started/
+            17. Query D1 from Hono - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/d1/examples/d1-and-hono/
+            18. JWT Auth Middleware - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/middleware/builtin/jwt
+            19. JWT Authentication Helper - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/helpers/jwt
+            20. Rate Limiting - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+            21. Secrets - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/configuration/secrets/
+            22. Use Secrets Store with Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/secrets-store/integrations/workers/
+            23. What is a Cloudflare Secret? - Pulumi, 6月 27, 2025にアクセス、 https://www.pulumi.com/what-is/what-is-a-cloudflare-secret/
+            24. What is secrets management? - Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/learning/security/glossary/secrets-management/
+            25. CI/CD · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/
+            26. GitHub Actions - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/
+            27. Purge Cached Content - Cloudflare API, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/api/resources/cache/methods/purge/
+            28. Cloudflare Purge Cache · Actions · GitHub Marketplace, 6月 27, 2025にアクセス、 https://github.com/marketplace/actions/cloudflare-purge-cache
+            29. Cache - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/runtime-apis/cache/
+            30. How the Cache works · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/reference/how-the-cache-works/
+            31. Cloudflare Workers Cache API - Random Bits Software Engineering, 6月 27, 2025にアクセス、 https://randombits.dev/articles/cloudflare-workers-cache
+            32. Purge cache by cache-tags - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/
+            33. ​Purge cache by prefix (URL) · Cloudflare Cache (CDN) docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/cache/how-to/purge-cache/purge_by_prefix/
+            34. Write your first test · Cloudflare Workers docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/vitest-integration/write-your-first-test/
+            35. Testing - Hono, 6月 27, 2025にアクセス、 https://hono.dev/docs/guides/testing
+            36. Writing tests · Cloudflare Workers docs - Miniflare, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/miniflare/writing-tests/
+            37. Miniflare - Get Started - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/testing/miniflare/get-started/
+            38. workers-sdk/packages/miniflare/README.md at main - GitHub, 6月 27, 2025にアクセス、 https://github.com/cloudflare/workers-sdk/blob/main/packages/miniflare/README.md
+            39. Workers & Pages Pricing - Cloudflare, 6月 27, 2025にアクセス、 https://www.cloudflare.com/plans/developer-platform/
+            40. Pricing - Workers - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/workers/platform/pricing/
+            41. A Workers optimization that reduces your bill - The Cloudflare Blog, 6月 27, 2025にアクセス、 https://blog.cloudflare.com/workers-optimization-reduces-your-bill/
+            42. Pricing - D1 - Cloudflare Docs, 6月 27, 2025にアクセス、 https://developers.cloudflare.com/d1/platform/pricing/
