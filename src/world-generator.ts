@@ -211,10 +211,23 @@ export function generateUniverse(playerName: string = 'Commander'): GameState {
     isMoving: false
   };
 
+  const traderShip: Ship = {
+    id: 'trader_01',
+    name: 'Merchant',
+    type: 'trader',
+    position: { x: 100, y: 100 },
+    sectorId: startingSector.id,
+    maxSpeed: 300,
+    cargoClass: 'L',
+    cargoCapacity: 50,
+    cargo: [],
+    isMoving: false
+  };
+
   const player: Player = {
     name: playerName,
     credits: 100000,
-    ships: [scoutShip],
+    ships: [scoutShip, traderShip],
     discoveredSectors: [startingSector.id]
   };
 

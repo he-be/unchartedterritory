@@ -27,7 +27,7 @@ describe('Uncharted Territory Game API', () => {
       expect(response.body.initialState).toMatchObject({
         playerId: 'Commander',
         credits: 100000,
-        shipCount: 1
+        shipCount: 2
       });
     });
 
@@ -41,7 +41,7 @@ describe('Uncharted Territory Game API', () => {
         name: 'Commander',
         credits: 100000
       });
-      expect(response.body.player.ships).toHaveLength(1);
+      expect(response.body.player.ships).toHaveLength(2);
       expect(response.body.discoveredSectors).toHaveLength(1);
     });
 
@@ -238,8 +238,8 @@ describe('Uncharted Territory Game API', () => {
 
       expect(response.body.name).toBe('Commander');
       expect(response.body.credits).toBe(100000);
-      expect(response.body.ships).toHaveLength(1);
-      expect(response.body.fleetStatus).toHaveLength(1);
+      expect(response.body.ships).toHaveLength(2);
+      expect(response.body.fleetStatus).toHaveLength(2);
       expect(response.body.totalCargoValue).toBeDefined();
     });
   });

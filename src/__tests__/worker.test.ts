@@ -81,7 +81,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       const json = await response.json();
       expect(json.id).toBe(gameId);
       expect(json.player.name).toBe('Commander');
-      expect(json.player.ships).toHaveLength(1);
+      expect(json.player.ships).toHaveLength(2);
       expect(json.sectors.filter((s: any) => s.discovered)).toHaveLength(1);
     });
 
@@ -257,7 +257,7 @@ describe('Uncharted Territory Cloudflare Workers', () => {
       const json = await response.json();
       expect(json.name).toBe('Commander');
       expect(json.credits).toBe(100000);
-      expect(json.fleetStatus).toHaveLength(1);
+      expect(json.fleetStatus).toHaveLength(2);
     });
   });
 
