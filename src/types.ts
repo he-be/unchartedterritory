@@ -121,3 +121,59 @@ export interface GameEvent {
   message: string;
   details?: any;
 }
+
+// Cloudflare Workers Durable Objects and WebSocket types
+export interface DurableObjectState {
+  storage: DurableObjectStorage;
+  acceptWebSocket(ws: CloudflareWebSocket): void;
+  getWebSockets(): CloudflareWebSocket[];
+}
+
+export interface DurableObjectStorage {
+  get<T>(key: string): Promise<T | undefined>;
+  put<T>(key: string, value: T): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  deleteAll(): Promise<void>;
+  list<T>(options?: { prefix?: string; limit?: number }): Promise<Map<string, T>>;
+  setAlarm(scheduledTime: number | Date): Promise<void>;
+  getAlarm(): Promise<number | null>;
+  deleteAlarm(): Promise<void>;
+}
+
+export interface DurableObjectNamespace {
+  idFromName(name: string): DurableObjectId;
+  idFromString(hexId: string): DurableObjectId;
+  newUniqueId(): DurableObjectId;
+  get(id: DurableObjectId): DurableObjectStub;
+}
+
+export interface DurableObjectId {
+  toString(): string;
+  equals(other: DurableObjectId): boolean;
+}
+
+export interface CloudflareRequestInit {
+  method?: string;
+  headers?: Record<string, string> | Headers;
+  body?: string | ArrayBuffer | null;
+  signal?: AbortSignal | null;
+}
+
+export interface DurableObjectStub {
+  fetch(request: Request | string, init?: CloudflareRequestInit): Promise<Response>;
+}
+
+export interface CloudflareWebSocket {
+  send(message: string): void;
+  close(code?: number, reason?: string): void;
+  addEventListener(type: string, listener: (event: Event) => void): void;
+  removeEventListener(type: string, listener: (event: Event) => void): void;
+}
+
+export interface CloudflareWebSocketPair {
+  (): [CloudflareWebSocket, CloudflareWebSocket];
+}
+
+export interface CloudflareEnv {
+  GAME_SESSION: DurableObjectNamespace;
+}

@@ -1,17 +1,35 @@
-// Uncharted Territory - Cloudflare Workers Implementation
+// Uncharted Territory - Cloudflare Workers Implementation with WebSocket + Durable Objects
 
-import { GameState, ShipCommand, GameEvent } from './types';
+import { GameState, ShipCommand, GameEvent, CloudflareEnv } from './types';
 import { generateUniverse } from './world-generator';
 import { EconomicEngine } from './economic-engine';
 import { ShipEngine } from './ship-engine';
 
-// KV storage would be used in production for game state persistence
-// For MVP, we use in-memory storage (will reset on deployment)
+// Export Durable Object class
+export { GameSession } from './game-session';
+
+export type Env = CloudflareEnv;
+
+// Fallback storage for backward compatibility
 const gameStates = new Map<string, GameState>();
 const gameEvents = new Map<string, GameEvent[]>();
 
+// WebSocket upgrade handler
+async function handleWebSocket(gameId: string, request: Request, env: Env | undefined): Promise<Response> {
+  if (!env?.GAME_SESSION) {
+    return new Response('WebSocket connections require Durable Objects', { status: 503 });
+  }
+  
+  // Get or create Durable Object for this game session
+  const gameSessionId = env.GAME_SESSION.idFromName(gameId);
+  const gameSession = env.GAME_SESSION.get(gameSessionId);
+  
+  // Forward the WebSocket upgrade request to the Durable Object
+  return gameSession.fetch(request);
+}
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env?: Env): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
     
@@ -36,42 +54,48 @@ export default {
       }
 
       if (url.pathname === '/api/game/new' && method === 'POST') {
-        return handleNewGame(corsHeaders);
+        return await handleNewGame(env, corsHeaders);
+      }
+
+      // WebSocket endpoint for real-time game sessions
+      const wsMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/ws$/);
+      if (wsMatch && wsMatch[1]) {
+        return handleWebSocket(wsMatch[1], request, env);
       }
 
       const gameStateMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/state$/);
       if (gameStateMatch && gameStateMatch[1] && method === 'GET') {
-        return handleGameState(gameStateMatch[1], corsHeaders);
+        return await handleGameState(gameStateMatch[1], env, corsHeaders);
       }
 
       const sectorsMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/sectors$/);
       if (sectorsMatch && sectorsMatch[1] && method === 'GET') {
-        return handleSectors(sectorsMatch[1], corsHeaders);
+        return await handleSectors(sectorsMatch[1], env, corsHeaders);
       }
 
       const sectorDetailMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/sectors\/([^/]+)$/);
       if (sectorDetailMatch && sectorDetailMatch[1] && sectorDetailMatch[2] && method === 'GET') {
-        return handleSectorDetail(sectorDetailMatch[1], sectorDetailMatch[2], corsHeaders);
+        return await handleSectorDetail(sectorDetailMatch[1], sectorDetailMatch[2], env, corsHeaders);
       }
 
       const shipCommandMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/ships\/([^/]+)\/commands$/);
       if (shipCommandMatch && shipCommandMatch[1] && shipCommandMatch[2] && method === 'POST') {
-        return handleShipCommand(shipCommandMatch[1], shipCommandMatch[2], request, corsHeaders);
+        return await handleShipCommand(shipCommandMatch[1], shipCommandMatch[2], request, env, corsHeaders);
       }
 
       const tradeOpportunitiesMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/trade-opportunities$/);
       if (tradeOpportunitiesMatch && tradeOpportunitiesMatch[1] && method === 'GET') {
-        return handleTradeOpportunities(tradeOpportunitiesMatch[1], corsHeaders);
+        return await handleTradeOpportunities(tradeOpportunitiesMatch[1], env, corsHeaders);
       }
 
       const tradeMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/ships\/([^/]+)\/trade$/);
       if (tradeMatch && tradeMatch[1] && tradeMatch[2] && method === 'POST') {
-        return handleTrade(tradeMatch[1], tradeMatch[2], request, corsHeaders);
+        return await handleTrade(tradeMatch[1], tradeMatch[2], request, env, corsHeaders);
       }
 
       const playerMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/player$/);
       if (playerMatch && playerMatch[1] && method === 'GET') {
-        return handlePlayer(playerMatch[1], corsHeaders);
+        return await handlePlayer(playerMatch[1], env, corsHeaders);
       }
 
       return new Response('Not Found', { status: 404, headers: corsHeaders });
@@ -115,8 +139,33 @@ function handleHealth(corsHeaders: Record<string, string>): Response {
   });
 }
 
-function handleNewGame(corsHeaders: Record<string, string>): Response {
+async function handleNewGame(env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = generateUniverse();
+  
+  // Try to use Durable Objects if available
+  if (env?.GAME_SESSION) {
+    try {
+      const gameSessionId = env.GAME_SESSION.idFromName(gameState.id);
+      const gameSession = env.GAME_SESSION.get(gameSessionId);
+      
+      // Initialize the game session
+      const response = await gameSession.fetch('https://placeholder/new', {
+        method: 'POST',
+        body: JSON.stringify(gameState)
+      });
+      
+      if (response.ok) {
+        return new Response(JSON.stringify(gameState), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+    } catch (error) {
+      console.error('Error creating Durable Object game session:', error);
+    }
+  }
+  
+  // Fallback storage for backward compatibility or when Durable Objects unavailable
   gameStates.set(gameState.id, gameState);
   gameEvents.set(gameState.id, []);
 
@@ -126,7 +175,26 @@ function handleNewGame(corsHeaders: Record<string, string>): Response {
   });
 }
 
-function handleGameState(gameId: string, corsHeaders: Record<string, string>): Response {
+async function handleGameState(gameId: string, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
+  if (env?.GAME_SESSION) {
+    try {
+      // Try to get state from Durable Object first
+      const gameSessionId = env.GAME_SESSION.idFromName(gameId);
+      const gameSession = env.GAME_SESSION.get(gameSessionId);
+      
+      const response = await gameSession.fetch('https://placeholder/state');
+      if (response.ok) {
+        const gameState = await response.json();
+        return new Response(JSON.stringify(gameState), {
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+    } catch (error) {
+      console.error('Error getting state from Durable Object:', error);
+    }
+  }
+  
+  // Fallback to local storage for backward compatibility
   const gameState = gameStates.get(gameId);
 
   if (!gameState) {
@@ -149,7 +217,7 @@ function handleGameState(gameId: string, corsHeaders: Record<string, string>): R
   });
 }
 
-function handleSectors(gameId: string, corsHeaders: Record<string, string>): Response {
+async function handleSectors(gameId: string, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = gameStates.get(gameId);
 
   if (!gameState) {
@@ -174,7 +242,7 @@ function handleSectors(gameId: string, corsHeaders: Record<string, string>): Res
   });
 }
 
-function handleSectorDetail(gameId: string, sectorId: string, corsHeaders: Record<string, string>): Response {
+async function handleSectorDetail(gameId: string, sectorId: string, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = gameStates.get(gameId);
 
   if (!gameState) {
@@ -208,7 +276,44 @@ function handleSectorDetail(gameId: string, sectorId: string, corsHeaders: Recor
   });
 }
 
-async function handleShipCommand(gameId: string, shipId: string, request: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function handleShipCommand(gameId: string, shipId: string, request: Request, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
+  let commandData: any;
+  
+  // Parse request body once
+  try {
+    commandData = await request.json();
+  } catch (error) {
+    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+  
+  if (env?.GAME_SESSION) {
+    try {
+      // Try to send command to Durable Object first
+      const gameSessionId = env.GAME_SESSION.idFromName(gameId);
+      const gameSession = env.GAME_SESSION.get(gameSessionId);
+    
+    // Forward the command request to the Durable Object via HTTP fallback
+    const response = await gameSession.fetch(`https://placeholder/ships/${shipId}/commands`, {
+      method: 'POST',
+      body: JSON.stringify(commandData),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response.ok) {
+      const result = await response.json();
+      return new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+    } catch (error) {
+      console.error('Error sending command to Durable Object:', error);
+    }
+  }
+  
+  // Fallback to local storage implementation
   const gameState = gameStates.get(gameId);
   if (!gameState) {
     return new Response(JSON.stringify({ error: 'Game not found' }), {
@@ -225,15 +330,7 @@ async function handleShipCommand(gameId: string, shipId: string, request: Reques
     });
   }
 
-  let command: ShipCommand;
-  try {
-    command = await request.json() as ShipCommand;
-  } catch (error) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  }
+  const command = commandData as ShipCommand;
 
   if (ship.isMoving && command.type !== 'trade') {
     return new Response(JSON.stringify({ error: 'Ship is currently moving' }), {
@@ -262,7 +359,7 @@ async function handleShipCommand(gameId: string, shipId: string, request: Reques
   });
 }
 
-function handleTradeOpportunities(gameId: string, corsHeaders: Record<string, string>): Response {
+async function handleTradeOpportunities(gameId: string, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = gameStates.get(gameId);
 
   if (!gameState) {
@@ -278,7 +375,7 @@ function handleTradeOpportunities(gameId: string, corsHeaders: Record<string, st
   });
 }
 
-async function handleTrade(gameId: string, shipId: string, request: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function handleTrade(gameId: string, shipId: string, request: Request, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = gameStates.get(gameId);
   if (!gameState) {
     return new Response(JSON.stringify({ error: 'Game not found' }), {
@@ -353,7 +450,7 @@ async function handleTrade(gameId: string, shipId: string, request: Request, cor
   });
 }
 
-function handlePlayer(gameId: string, corsHeaders: Record<string, string>): Response {
+async function handlePlayer(gameId: string, env: Env | undefined, corsHeaders: Record<string, string>): Promise<Response> {
   const gameState = gameStates.get(gameId);
 
   if (!gameState) {

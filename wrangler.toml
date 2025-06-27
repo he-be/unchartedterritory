@@ -6,5 +6,15 @@ compatibility_date = "2024-01-01"
 [build]
 command = "npm run build:worker"
 
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "GAME_SESSION"
+class_name = "GameSession"
+
 [env.staging]
 name = "unchartedterritory-staging"
+
+# Durable Object bindings for staging
+[[env.staging.durable_objects.bindings]]
+name = "GAME_SESSION"
+class_name = "GameSession"
