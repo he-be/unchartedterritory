@@ -90,7 +90,7 @@ export class WebSocketService {
       // Convert HTTP(S) URL to WebSocket URL
       const wsUrl = this.config.baseUrl
         .replace('http://', 'ws://')
-        .replace('https://', 'wss://') + `/game/${gameId}/ws`;
+        .replace('https://', 'wss://') + `/api/game/${gameId}/ws`;
 
       try {
         this.ws = new WebSocket(wsUrl);
