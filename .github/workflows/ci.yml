@@ -41,9 +41,10 @@ jobs:
       - name: Run tests
         run: npm test
       
-      - name: Coverage Report
-        if: github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@v2
+      # Coverage Report disabled while tests are disabled due to vitest-pool-workers issue
+      # - name: Coverage Report
+      #   if: github.event_name == 'pull_request'
+      #   uses: davelosert/vitest-coverage-report-action@v2
       
       - name: Build for Cloudflare Workers
         run: npm run build
