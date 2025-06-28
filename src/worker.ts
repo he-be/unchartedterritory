@@ -20,6 +20,12 @@ async function handleWebSocket(gameId: string, request: Request, env: Env | unde
     return new Response('WebSocket connections require Durable Objects', { status: 503 });
   }
   
+  // Check if this is a WebSocket upgrade request
+  const upgradeHeader = request.headers.get('Upgrade');
+  if (upgradeHeader !== 'websocket') {
+    return new Response('Expected WebSocket upgrade', { status: 400 });
+  }
+  
   // Get or create Durable Object for this game session
   const gameSessionId = env.GAME_SESSION.idFromName(gameId);
   const gameSession = env.GAME_SESSION.get(gameSessionId);
