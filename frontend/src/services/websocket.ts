@@ -62,11 +62,11 @@ export class WebSocketService {
   private messageQueue: WebSocketMessage[] = [];
   
   // Event listeners
-  private onStatusChange: ((status: ConnectionStatus) => void) | null = null;
-  private onGameStateUpdate: ((gameState: GameState) => void) | null = null;
-  private onCommandResult: ((result: WebSocketResponse) => void) | null = null;
-  private onError: ((error: string) => void) | null = null;
-  private onEvents: ((events: GameEvent[]) => void) | null = null;
+  private statusChangeHandler: ((status: ConnectionStatus) => void) | null = null;
+  private gameStateUpdateHandler: ((gameState: GameState) => void) | null = null;
+  private commandResultHandler: ((result: WebSocketResponse) => void) | null = null;
+  private errorHandler: ((error: string) => void) | null = null;
+  private eventsHandler: ((events: GameEvent[]) => void) | null = null;
 
   constructor(config: WebSocketServiceConfig) {
     this.config = {
@@ -121,7 +121,7 @@ export class WebSocketService {
         this.ws.onerror = (error) => {
           console.error('WebSocket error:', error);
           this.setStatus('error');
-          this.onError?.('WebSocket connection error');
+          this.errorHandler?.('WebSocket connection error');
           reject(new Error('WebSocket connection failed'));
         };
 
@@ -174,24 +174,24 @@ export class WebSocketService {
   }
 
   // Event listener setters
-  public onStatusChange(callback: (status: ConnectionStatus) => void): void {
-    this.onStatusChange = callback;
+  public setOnStatusChange(callback: (status: ConnectionStatus) => void): void {
+    this.statusChangeHandler = callback;
   }
 
-  public onGameStateUpdate(callback: (gameState: GameState) => void): void {
-    this.onGameStateUpdate = callback;
+  public setOnGameStateUpdate(callback: (gameState: GameState) => void): void {
+    this.gameStateUpdateHandler = callback;
   }
 
-  public onCommandResult(callback: (result: WebSocketResponse) => void): void {
-    this.onCommandResult = callback;
+  public setOnCommandResult(callback: (result: WebSocketResponse) => void): void {
+    this.commandResultHandler = callback;
   }
 
-  public onError(callback: (error: string) => void): void {
-    this.onError = callback;
+  public setOnError(callback: (error: string) => void): void {
+    this.errorHandler = callback;
   }
 
-  public onEvents(callback: (events: GameEvent[]) => void): void {
-    this.onEvents = callback;
+  public setOnEvents(callback: (events: GameEvent[]) => void): void {
+    this.eventsHandler = callback;
   }
 
   public getStatus(): ConnectionStatus {
@@ -219,26 +219,26 @@ export class WebSocketService {
       switch (response.type) {
         case 'gameState':
           if (response.gameState) {
-            this.onGameStateUpdate?.(response.gameState);
+            this.gameStateUpdateHandler?.(response.gameState);
           }
           break;
           
         case 'stateUpdate':
           if (response.gameState) {
-            this.onGameStateUpdate?.(response.gameState);
+            this.gameStateUpdateHandler?.(response.gameState);
           }
           if (response.events && response.events.length > 0) {
-            this.onEvents?.(response.events);
+            this.eventsHandler?.(response.events);
           }
           break;
           
         case 'commandResult':
         case 'tradeResult':
-          this.onCommandResult?.(response);
+          this.commandResultHandler?.(response);
           break;
           
         case 'error':
-          this.onError?.(response.message || 'Unknown server error');
+          this.errorHandler?.(response.message || 'Unknown server error');
           break;
           
         case 'pong':
@@ -250,14 +250,14 @@ export class WebSocketService {
       }
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
-      this.onError?.('Failed to parse server message');
+      this.errorHandler?.('Failed to parse server message');
     }
   }
 
   private setStatus(status: ConnectionStatus): void {
     if (this.status !== status) {
       this.status = status;
-      this.onStatusChange?.(status);
+      this.statusChangeHandler?.(status);
     }
   }
 
