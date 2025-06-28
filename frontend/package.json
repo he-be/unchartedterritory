@@ -6,8 +6,8 @@
     "build": "npm run build:assets && npm run build:worker",
     "build:assets": "vite build",
     "build:worker": "esbuild src/worker.ts --bundle --format=esm --outfile=dist/worker.js --external:cloudflare:*",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
     "preview": "vite preview",
     "lint": "echo 'Frontend lint skipped for MVP'",
     "typecheck": "echo 'Frontend typecheck skipped for MVP'"
