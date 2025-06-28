@@ -2,7 +2,7 @@ import { useGameStore } from '../store/gameStore';
 import './GameHeader.css';
 
 function GameHeader() {
-  const { gameState, error, clearError } = useGameStore();
+  const { gameState, error, clearError, connectionStatus } = useGameStore();
 
   if (!gameState) return null;
 
@@ -10,6 +10,26 @@ function GameHeader() {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return `${hours}h ${minutes}m`;
+  };
+
+  const getConnectionStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected': return '🟢';
+      case 'connecting': return '🟡';
+      case 'disconnected': return '🔴';
+      case 'error': return '🔴';
+      default: return '⚪';
+    }
+  };
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'Real-time';
+      case 'connecting': return 'Connecting...';
+      case 'disconnected': return 'Offline';
+      case 'error': return 'Connection Error';
+      default: return 'Unknown';
+    }
   };
 
   return (
@@ -39,6 +59,10 @@ function GameHeader() {
       </div>
 
       <div className="header-section">
+        <div className="connection-status">
+          <span className="connection-icon">{getConnectionStatusIcon()}</span>
+          <span className="connection-text">{getConnectionStatusText()}</span>
+        </div>
         <div className="game-time">
           <span className="label">Game Time:</span>
           <span className="value">{formatTime(gameState.gameTime)}</span>

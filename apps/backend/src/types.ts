@@ -59,12 +59,13 @@ export interface Ship {
   cargoCapacity: number;
   cargo: { wareId: string; quantity: number }[];
   currentCommand?: ShipCommand | undefined;
+  commandQueue: ShipCommand[];
   isMoving: boolean;
   destination?: Vector2 | undefined;
 }
 
 export interface ShipCommand {
-  type: 'move' | 'explore' | 'trade';
+  type: 'move' | 'explore' | 'trade' | 'auto-move';
   target?: string; // station ID or sector ID
   parameters?: {
     action?: 'buy' | 'sell';
@@ -73,6 +74,7 @@ export interface ShipCommand {
     position?: Vector2;
     x?: number;
     y?: number;
+    targetSectorId?: string; // for auto-move across sectors
   };
 }
 
@@ -83,10 +85,31 @@ export interface Player {
   discoveredSectors: string[];
 }
 
+export interface GalaxyMap {
+  sectors: { [sectorId: string]: GalaxySectorNode };
+  connections: GalaxyConnection[];
+}
+
+export interface GalaxySectorNode {
+  id: string;
+  name: string;
+  position: Vector2; // Position on galaxy map
+  discovered: boolean;
+}
+
+export interface GalaxyConnection {
+  id: string; // Unique connection ID (gate pair)
+  sectorA: string;
+  sectorB: string;
+  gateAId: string; // Gate ID in sector A
+  gateBId: string; // Gate ID in sector B
+}
+
 export interface GameState {
   id: string;
   player: Player;
   sectors: Sector[];
+  galaxyMap: GalaxyMap;
   wares: Ware[];
   gameTime: number; // in seconds
   lastUpdate: number; // timestamp

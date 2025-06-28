@@ -1,6 +1,8 @@
 // Ship movement and exploration engine for Uncharted Territory
 
 import { GameState, Ship, ShipCommand, Vector2, GameEvent, Station } from './types';
+import { CommandQueue } from './command-queue';
+import { GalaxyNavigation } from './galaxy-navigation';
 
 export class ShipEngine {
   private static MOVEMENT_SPEED_MULTIPLIER = 100; // pixels per second
@@ -62,9 +64,118 @@ export class ShipEngine {
         targetPosition = station.position;
       } else if (gate) {
         targetPosition = gate.position;
+      } else {
+        // Station/gate not found in current sector - search all sectors for cross-sector movement
+        const targetStationInfo = this.findStationInAllSectors(command.target, gameState);
+        if (targetStationInfo && targetStationInfo.sectorId !== ship.sectorId) {
+          // This is a cross-sector station movement - need to navigate to target sector first
+          const galaxyRoute = GalaxyNavigation.findGalaxyRoute(gameState, ship.sectorId, targetStationInfo.sectorId);
+          if (galaxyRoute && galaxyRoute.steps.length > 0) {
+            // Add commands to navigate to the target sector
+            galaxyRoute.steps.forEach(step => {
+              const moveCommand: ShipCommand = {
+                type: 'move',
+                target: step.gateId
+              };
+              CommandQueue.addCommand(ship, moveCommand);
+            });
+            
+            // Add final command to move to the station in the target sector
+            const finalMoveCommand: ShipCommand = {
+              type: 'move',
+              target: command.target
+            };
+            CommandQueue.addCommand(ship, finalMoveCommand);
+            
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name} planning cross-sector route to station ${command.target} in ${targetStationInfo.sectorId}`,
+              details: { 
+                shipId: ship.id, 
+                targetStation: command.target,
+                targetSector: targetStationInfo.sectorId, 
+                routeSteps: galaxyRoute.steps.length
+              }
+            });
+            
+            return;
+          } else {
+            events.push({
+              timestamp: Date.now(),
+              type: 'movement',
+              message: `${ship.name}: Cannot find route to station ${command.target} in sector ${targetStationInfo.sectorId}`,
+              details: { shipId: ship.id, targetStation: command.target, targetSector: targetStationInfo.sectorId }
+            });
+            return;
+          }
+        } else if (targetStationInfo && targetStationInfo.sectorId === ship.sectorId) {
+          // Station found in current sector but wasn't found in initial search - shouldn't happen
+          targetPosition = targetStationInfo.station.position;
+        }
       }
     } else if (command.parameters?.x !== undefined && command.parameters?.y !== undefined) {
-      targetPosition = { x: command.parameters.x, y: command.parameters.y };
+      const targetCoordinates = { x: command.parameters.x, y: command.parameters.y };
+      let targetSectorId = command.parameters.targetSectorId;
+      
+      // If no targetSectorId provided, try to determine which sector the coordinates belong to
+      if (!targetSectorId) {
+        targetSectorId = this.findSectorByCoordinates(targetCoordinates, gameState) || undefined;
+      }
+      
+      // Check if this is a cross-sector movement
+      if (targetSectorId && targetSectorId !== ship.sectorId) {
+        // This is a cross-sector coordinate movement - need to navigate to target sector first
+        const galaxyRoute = GalaxyNavigation.findGalaxyRoute(gameState, ship.sectorId, targetSectorId);
+        if (galaxyRoute && galaxyRoute.steps.length > 0) {
+          // Add commands to navigate to the target sector
+          galaxyRoute.steps.forEach(step => {
+            const moveCommand: ShipCommand = {
+              type: 'move',
+              target: step.gateId
+            };
+            CommandQueue.addCommand(ship, moveCommand);
+          });
+          
+          // Add final command to move to the coordinates in the target sector
+          const finalMoveCommand: ShipCommand = {
+            type: 'move',
+            parameters: {
+              x: targetCoordinates.x,
+              y: targetCoordinates.y,
+              targetSectorId: targetSectorId
+            }
+          };
+          CommandQueue.addCommand(ship, finalMoveCommand);
+          
+          events.push({
+            timestamp: Date.now(),
+            type: 'movement',
+            message: `${ship.name} planning cross-sector route to coordinates in ${targetSectorId}`,
+            details: { 
+              shipId: ship.id, 
+              targetSector: targetSectorId, 
+              targetCoordinates,
+              routeSteps: galaxyRoute.steps.length
+            }
+          });
+          
+          // Don't start processing immediately - let caller decide when to process
+          // CommandQueue.processQueue(ship, gameState);
+          return;
+        } else {
+          events.push({
+            timestamp: Date.now(),
+            type: 'movement',
+            message: `${ship.name}: Cannot find route to sector ${targetSectorId}`,
+            details: { shipId: ship.id, targetSector: targetSectorId }
+          });
+          return;
+        }
+      }
+      
+      // Same sector movement or no sector specified
+      targetPosition = targetCoordinates;
     }
 
     if (targetPosition) {
@@ -257,6 +368,63 @@ export class ShipEngine {
       const ware = WARES.find(w => w.id === cargo.wareId);
       return total + (cargo.quantity * (ware?.cargoSize || 1));
     }, 0);
+  }
+
+  /**
+   * Find a station by ID across all sectors in the game
+   */
+  private static findStationInAllSectors(stationId: string, gameState: GameState): { station: Station; sectorId: string } | null {
+    for (const sector of gameState.sectors) {
+      const station = sector.stations.find(s => s.id === stationId);
+      if (station) {
+        return { station, sectorId: sector.id };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Find which sector contains the given coordinates based on proximity to sector elements
+   */
+  private static findSectorByCoordinates(coordinates: Vector2, gameState: GameState): string | null {
+    let bestMatch: { sectorId: string; distance: number } | null = null;
+
+    // Check all discovered sectors
+    for (const sector of gameState.sectors) {
+      if (!sector.discovered) continue;
+
+      // Calculate distances to all elements in this sector
+      const distances: number[] = [];
+
+      // Distance to stations
+      sector.stations.forEach(station => {
+        const distance = this.getDistance(coordinates, station.position);
+        distances.push(distance);
+      });
+
+      // Distance to gates  
+      sector.gates.forEach(gate => {
+        const distance = this.getDistance(coordinates, gate.position);
+        distances.push(distance);
+      });
+
+      // If this sector has elements, find the closest one
+      if (distances.length > 0) {
+        const minDistance = Math.min(...distances);
+        
+        // Consider coordinates belonging to this sector if they're reasonably close
+        // Use a threshold to determine if coordinates are "in" this sector
+        const SECTOR_THRESHOLD = 2000; // Adjust based on typical sector size
+        
+        if (minDistance < SECTOR_THRESHOLD) {
+          if (!bestMatch || minDistance < bestMatch.distance) {
+            bestMatch = { sectorId: sector.id, distance: minDistance };
+          }
+        }
+      }
+    }
+
+    return bestMatch?.sectorId || null;
   }
 
   static updateShipMovement(gameState: GameState, deltaTime: number): GameEvent[] {

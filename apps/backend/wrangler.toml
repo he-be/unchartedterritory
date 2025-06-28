@@ -6,5 +6,15 @@ compatibility_date = "2024-01-01"
 # Backend worker is private - no public routes except for health check
 # API access is only through Service Bindings from frontend worker
 
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "GAME_SESSION"
+class_name = "GameSession"
+
 [env.staging]
 name = "unchartedterritory-backend-staging"
+
+# Durable Object bindings for staging
+[[env.staging.durable_objects.bindings]]
+name = "GAME_SESSION"
+class_name = "GameSession"

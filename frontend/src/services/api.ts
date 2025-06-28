@@ -10,27 +10,27 @@ const api = axios.create({
 
 export const gameApi = {
   async createNewGame(playerName: string): Promise<GameState> {
-    const response = await api.post<GameState>('/game/new', { playerName });
+    const response = await api.post<GameState>('/api/game/new', { playerName });
     return response.data;
   },
 
   async getGameState(gameId: string): Promise<GameState> {
-    const response = await api.get<GameState>(`/game/${gameId}/state`);
+    const response = await api.get<GameState>(`/api/game/${gameId}/state`);
     return response.data;
   },
 
   async getSectors(gameId: string): Promise<Sector[]> {
-    const response = await api.get<Sector[]>(`/game/${gameId}/sectors`);
+    const response = await api.get<Sector[]>(`/api/game/${gameId}/sectors`);
     return response.data;
   },
 
   async getSector(gameId: string, sectorId: string): Promise<Sector> {
-    const response = await api.get<Sector>(`/game/${gameId}/sectors/${sectorId}`);
+    const response = await api.get<Sector>(`/api/game/${gameId}/sectors/${sectorId}`);
     return response.data;
   },
 
   async sendShipCommand(gameId: string, shipId: string, command: ShipCommand): Promise<void> {
-    await api.post(`/game/${gameId}/ships/${shipId}/commands`, command);
+    await api.post(`/api/game/${gameId}/ships/${shipId}/commands`, command);
   },
 
   async tradeAtStation(
@@ -41,7 +41,7 @@ export const gameApi = {
     quantity: number,
     action: 'buy' | 'sell'
   ): Promise<void> {
-    await api.post(`/game/${gameId}/ships/${shipId}/trade`, {
+    await api.post(`/api/game/${gameId}/ships/${shipId}/trade`, {
       stationId,
       wareId,
       quantity,
@@ -50,12 +50,12 @@ export const gameApi = {
   },
 
   async getTradeOpportunities(gameId: string): Promise<TradeOpportunity[]> {
-    const response = await api.get<TradeOpportunity[]>(`/game/${gameId}/trade-opportunities`);
+    const response = await api.get<TradeOpportunity[]>(`/api/game/${gameId}/trade-opportunities`);
     return response.data;
   },
 
   async getPlayer(gameId: string): Promise<Player> {
-    const response = await api.get<Player>(`/game/${gameId}/player`);
+    const response = await api.get<Player>(`/api/game/${gameId}/player`);
     return response.data;
   },
 };
