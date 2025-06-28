@@ -1,7 +1,0 @@
-name = "unchartedterritory-frontend"
-main = "src/frontend-worker.ts"
-compatibility_date = "2024-09-19"
-assets = { directory = "./frontend/dist" }
-
-[env.staging]
-name = "unchartedterritory-frontend-staging"

@@ -1,16 +1,10 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
-import './index.css'
-import { useGameStore } from './store/gameStore'
-
-// Expose store to window for debugging
-if (typeof window !== 'undefined') {
-  (window as Window & { gameStore?: typeof useGameStore }).gameStore = useGameStore;
-}
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
-)
+);

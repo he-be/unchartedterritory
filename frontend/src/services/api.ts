@@ -1,63 +1,43 @@
-import axios from 'axios';
-import { GameState, Sector, TradeOpportunity, ShipCommand, Player } from '../types/game';
+import type { GameState } from '../types';
 
-const api = axios.create({
-  baseURL: (import.meta as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL || '/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+class ApiService {
+  private baseUrl: string;
 
-export const gameApi = {
+  constructor() {
+    // Use relative URL for API calls - will be proxied to backend
+    this.baseUrl = '';
+  }
+
   async createNewGame(playerName: string): Promise<GameState> {
-    const response = await api.post<GameState>('/game/new', { playerName });
-    return response.data;
-  },
+    const response = await fetch(`${this.baseUrl}/api/game/new`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ playerName }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create new game');
+    }
+
+    return response.json();
+  }
 
   async getGameState(gameId: string): Promise<GameState> {
-    const response = await api.get<GameState>(`/game/${gameId}/state`);
-    return response.data;
-  },
+    const response = await fetch(`${this.baseUrl}/api/game/${gameId}/state`);
 
-  async getSectors(gameId: string): Promise<Sector[]> {
-    const response = await api.get<Sector[]>(`/game/${gameId}/sectors`);
-    return response.data;
-  },
+    if (!response.ok) {
+      throw new Error('Failed to get game state');
+    }
 
-  async getSector(gameId: string, sectorId: string): Promise<Sector> {
-    const response = await api.get<Sector>(`/game/${gameId}/sectors/${sectorId}`);
-    return response.data;
-  },
+    return response.json();
+  }
 
-  async sendShipCommand(gameId: string, shipId: string, command: ShipCommand): Promise<void> {
-    await api.post(`/game/${gameId}/ships/${shipId}/commands`, command);
-  },
+  createWebSocketUrl(gameId: string): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/api/game/${gameId}/ws`;
+  }
+}
 
-  async tradeAtStation(
-    gameId: string,
-    shipId: string,
-    stationId: string,
-    wareId: string,
-    quantity: number,
-    action: 'buy' | 'sell'
-  ): Promise<void> {
-    await api.post(`/game/${gameId}/ships/${shipId}/trade`, {
-      stationId,
-      wareId,
-      quantity,
-      action,
-    });
-  },
-
-  async getTradeOpportunities(gameId: string): Promise<TradeOpportunity[]> {
-    const response = await api.get<TradeOpportunity[]>(`/game/${gameId}/trade-opportunities`);
-    return response.data;
-  },
-
-  async getPlayer(gameId: string): Promise<Player> {
-    const response = await api.get<Player>(`/game/${gameId}/player`);
-    return response.data;
-  },
-};
-
-export default gameApi;
+export const apiService = new ApiService();
