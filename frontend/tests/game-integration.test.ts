@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Uncharted Territory Game', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:34505/');
+    await page.goto('http://localhost:39173/');
   });
 
   test('should create a new game and display game state', async ({ page }) => {
@@ -60,8 +60,8 @@ test.describe('Uncharted Territory Game', () => {
     await page.waitForTimeout(2000);
     
     // Verify command was sent and processed
-    const commandSent = consoleMessages.some(msg => msg.includes('Sending ship command'));
-    const commandExecuted = consoleMessages.some(msg => msg.includes('Command result: Command executed'));
+    const commandSent = consoleMessages.some(msg => msg.includes('Sending ship action'));
+    const commandExecuted = consoleMessages.some(msg => msg.includes('Command result') || msg.includes('Moving to position'));
     const stateUpdates = consoleMessages.filter(msg => msg.includes('Received game state update')).length;
     
     expect(commandSent).toBe(true);

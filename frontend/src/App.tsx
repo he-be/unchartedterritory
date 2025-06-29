@@ -80,24 +80,21 @@ const App: React.FC = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const handleShipCommand = (shipId: string, targetPosition: Vector2, targetId?: string) => {
+  const handleShipCommand = (shipId: string, targetPosition: Vector2) => {
     if (!wsService) {
       console.error('WebSocket service not available');
       return;
     }
     
-    const command = {
-      type: 'shipCommand' as const,
+    // Send abstract command - backend determines specific action based on world context
+    const message = {
+      type: 'shipAction' as const,
       shipId,
-      command: {
-        type: (targetId ? 'dock_at_station' : 'move') as const,
-        targetPosition,
-        stationId: targetId
-      }
+      targetPosition
     };
     
-    console.log('Sending ship command:', command);
-    wsService.sendMessage(command);
+    console.log('Sending ship action:', message);
+    wsService.sendMessage(message);
   };
 
   return (
@@ -151,6 +148,29 @@ const App: React.FC = () => {
               <span className={`status ${connectionStatus}`}>
                 {connectionStatus.toUpperCase()}
               </span>
+            </p>
+          </div>
+
+          <div className="card">
+            <h3>Sector Navigation</h3>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {gameState.sectors.map(sector => (
+                <button
+                  key={sector.id}
+                  className={`button ${sector.id === gameState.currentSectorId ? 'active' : ''}`}
+                  disabled
+                  style={{
+                    backgroundColor: sector.id === gameState.currentSectorId ? '#4a9eff' : '#666',
+                    color: sector.id === gameState.currentSectorId ? '#fff' : '#ccc',
+                    cursor: 'not-allowed'
+                  }}
+                >
+                  {sector.name}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: '14px', color: '#888' }}>
+              Current: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name} (Server-controlled)
             </p>
           </div>
 

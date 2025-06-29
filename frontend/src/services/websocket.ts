@@ -1,9 +1,10 @@
 import type { GameState, GameEvent, ConnectionStatus } from '../types';
 
 export interface WebSocketMessage {
-  type: 'shipCommand' | 'trade' | 'ping' | 'requestState';
+  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState';
   shipId?: string;
   command?: any;
+  targetPosition?: { x: number; y: number };
   tradeData?: any;
   data?: Record<string, unknown>;
 }
@@ -147,6 +148,8 @@ export class WebSocketService {
           break;
           
         case 'error':
+          // Always log errors for debugging
+          console.log('WebSocket error received:', response.message);
           // Only show error if it's not about game initialization
           if (!response.message?.includes('Game not initialized')) {
             this.onError?.(response.message || 'Unknown server error');

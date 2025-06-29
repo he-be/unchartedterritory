@@ -3,6 +3,8 @@ import type {
   Player, 
   Sector, 
   Ship, 
+  Gate,
+  Vector2,
   WebSocketMessage, 
   WebSocketResponse,
   ShipCommand,
@@ -203,12 +205,28 @@ export class GameSession implements DurableObject {
           ship.isMoving = false;
           delete ship.destination;
           
-          this.gameState.events.push({
-            id: crypto.randomUUID(),
-            timestamp: this.gameState.gameTime,
-            type: 'ship_moved',
-            message: `${ship.name} has reached its destination`,
+          // Check if ship arrived at a gate and auto-activate it
+          const currentSector = this.gameState.sectors.find(s => s.id === ship.sectorId);
+          const nearbyGate = currentSector?.gates.find(gate => {
+            const gateDistance = Math.sqrt(
+              Math.pow(ship.position.x - gate.position.x, 2) + 
+              Math.pow(ship.position.y - gate.position.y, 2)
+            );
+            return gateDistance < 30;
           });
+          
+          if (nearbyGate) {
+            // Auto-activate gate
+            console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
+            await this.processGateUsage(ship, nearbyGate);
+          } else {
+            this.gameState.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState.gameTime,
+              type: 'ship_moved',
+              message: `${ship.name} has reached its destination`,
+            });
+          }
         } else {
           // Move towards destination
           const moveDistance = SHIP_SPEED * deltaTime;
@@ -242,6 +260,12 @@ export class GameSession implements DurableObject {
       case 'shipCommand':
         if (message.shipId && message.command) {
           return await this.processShipCommand(message.shipId, message.command);
+        }
+        break;
+        
+      case 'shipAction':
+        if (message.shipId && message.targetPosition) {
+          return await this.processShipAction(message.shipId, message.targetPosition);
         }
         break;
         
@@ -293,10 +317,84 @@ export class GameSession implements DurableObject {
           }
         }
         break;
+        
     }
 
     await this.saveGameState();
     return { type: 'commandResult', shipId, message: 'Command executed' };
+  }
+
+  private async processShipAction(shipId: string, targetPosition: Vector2): Promise<WebSocketResponse> {
+    const ship = this.gameState!.player.ships.find(s => s.id === shipId);
+    if (!ship) {
+      return { type: 'error', message: 'Ship not found' };
+    }
+
+    const currentSector = this.gameState!.sectors.find(s => s.id === ship.sectorId);
+    if (!currentSector) {
+      return { type: 'error', message: 'Current sector not found' };
+    }
+
+    // Check what was clicked based on target position
+    // Check stations first (smaller hit area)
+    const clickedStation = currentSector.stations.find(station => {
+      const dx = targetPosition.x - station.position.x;
+      const dy = targetPosition.y - station.position.y;
+      return Math.sqrt(dx * dx + dy * dy) < 30; // 30 unit radius for stations
+    });
+
+    if (clickedStation) {
+      // Dock at station
+      ship.destination = { ...clickedStation.position };
+      ship.isMoving = true;
+      
+      this.gameState!.events.push({
+        id: crypto.randomUUID(),
+        timestamp: this.gameState!.gameTime,
+        type: 'ship_command',
+        message: `${ship.name} is docking at ${clickedStation.name}`,
+      });
+
+      await this.saveGameState();
+      return { type: 'commandResult', shipId, message: `Moving to station ${clickedStation.name}` };
+    }
+
+    // Check gates (larger hit area)
+    const clickedGate = currentSector.gates.find(gate => {
+      const dx = targetPosition.x - gate.position.x;
+      const dy = targetPosition.y - gate.position.y;
+      return Math.sqrt(dx * dx + dy * dy) < 50; // 50 unit radius for gates
+    });
+
+    if (clickedGate) {
+      // Move to gate (will auto-jump when arrived)
+      ship.destination = { ...clickedGate.position };
+      ship.isMoving = true;
+      
+      this.gameState!.events.push({
+        id: crypto.randomUUID(),
+        timestamp: this.gameState!.gameTime,
+        type: 'ship_command',
+        message: `${ship.name} is moving to gate to ${clickedGate.targetSectorId}`,
+      });
+
+      await this.saveGameState();
+      return { type: 'commandResult', shipId, message: `Moving to gate (will auto-jump to ${clickedGate.targetSectorId})` };
+    }
+
+    // Empty space - simple movement
+    ship.destination = { ...targetPosition };
+    ship.isMoving = true;
+    
+    this.gameState!.events.push({
+      id: crypto.randomUUID(),
+      timestamp: this.gameState!.gameTime,
+      type: 'ship_command',
+      message: `${ship.name} is moving to (${Math.round(targetPosition.x)}, ${Math.round(targetPosition.y)})`,
+    });
+
+    await this.saveGameState();
+    return { type: 'commandResult', shipId, message: 'Moving to position' };
   }
 
   private async processTrade(shipId: string, tradeData: TradeData): Promise<WebSocketResponse> {
@@ -469,6 +567,48 @@ export class GameSession implements DurableObject {
         message: 'Welcome to Argon Prime!'
       }]
     };
+  }
+
+  private async processGateUsage(ship: Ship, gate: Gate): Promise<void> {
+    const currentSector = this.gameState!.sectors.find(s => s.id === ship.sectorId);
+    const targetSector = this.gameState!.sectors.find(s => s.id === gate.targetSectorId);
+    
+    if (!targetSector) {
+      console.error(`Target sector ${gate.targetSectorId} not found`);
+      return;
+    }
+    
+    // Find corresponding gate in target sector that leads back to current sector
+    const returnGate = targetSector.gates.find(g => g.targetSectorId === ship.sectorId);
+    
+    // Move ship to target sector
+    ship.sectorId = gate.targetSectorId;
+    ship.isMoving = false;
+    delete ship.destination;
+    
+    // Position ship at the return gate in the target sector, or at center if no return gate
+    if (returnGate) {
+      ship.position = { x: returnGate.position.x + 50, y: returnGate.position.y }; // Slightly offset from gate
+    } else {
+      ship.position = { x: 0, y: 0 }; // Center of target sector
+    }
+    
+    // Update current sector if this is the player's ship (assuming single player for now)
+    this.gameState!.currentSectorId = gate.targetSectorId;
+    
+    this.gameState!.events.push({
+      id: crypto.randomUUID(),
+      timestamp: this.gameState!.gameTime,
+      type: 'sector_changed',
+      message: `${ship.name} has jumped to ${targetSector.name}`,
+      data: { 
+        fromSector: currentSector?.name,
+        toSector: targetSector.name,
+        shipId: ship.id 
+      }
+    });
+    
+    console.log(`Ship ${ship.name} jumped from ${currentSector?.name} to ${targetSector.name}`);
   }
 
   private async saveGameState(): Promise<void> {

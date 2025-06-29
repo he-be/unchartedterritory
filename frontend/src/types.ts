@@ -68,7 +68,7 @@ export interface GameState {
 export interface GameEvent {
   id: string;
   timestamp: number;
-  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command';
+  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command' | 'sector_changed';
   message: string;
   data?: Record<string, unknown>;
 }

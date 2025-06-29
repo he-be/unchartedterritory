@@ -4,7 +4,7 @@ import type { GameState, Station, Ship, Gate, Vector2 } from '../types';
 interface SectorMapProps {
   gameState: GameState;
   selectedShipId?: string | null;
-  onShipCommand?: (shipId: string, targetPosition: Vector2, targetId?: string) => void;
+  onShipCommand?: (shipId: string, targetPosition: Vector2) => void;
 }
 
 const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShipCommand }) => {
@@ -161,33 +161,8 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
     const { x: worldX, y: worldY } = screenToWorld(screenX, screenY);
     console.log('Click position:', { screenX, screenY, worldX, worldY });
 
-    // Check if clicked on a station
-    const clickedStation = currentSector.stations.find(station => {
-      const screen = worldToScreen(station.position.x, station.position.y);
-      const dx = screenX - screen.x;
-      const dy = screenY - screen.y;
-      return Math.sqrt(dx * dx + dy * dy) < 20;
-    });
-
-    // Check if clicked on a gate
-    const clickedGate = currentSector.gates.find(gate => {
-      const screen = worldToScreen(gate.position.x, gate.position.y);
-      const dx = screenX - screen.x;
-      const dy = screenY - screen.y;
-      return Math.sqrt(dx * dx + dy * dy) < 25;
-    });
-
-    if (clickedStation) {
-      console.log('Moving to station:', clickedStation.name);
-      onShipCommand(selectedShipId, clickedStation.position, clickedStation.id);
-    } else if (clickedGate) {
-      console.log('Moving to gate:', clickedGate.id);
-      onShipCommand(selectedShipId, clickedGate.position, clickedGate.id);
-    } else {
-      // Move to empty space
-      console.log('Moving to empty space:', { x: worldX, y: worldY });
-      onShipCommand(selectedShipId, { x: worldX, y: worldY });
-    }
+    // Simply send the click position to backend - let backend determine what was clicked
+    onShipCommand(selectedShipId, { x: worldX, y: worldY });
   };
 
   const handleCanvasHover = (e: React.MouseEvent<HTMLCanvasElement>) => {
