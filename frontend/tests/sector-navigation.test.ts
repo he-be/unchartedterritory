@@ -144,4 +144,47 @@ test.describe('Sector Navigation', () => {
     const argonPrimeButton = page.locator('button:has-text("Argon Prime")');
     await expect(argonPrimeButton).toBeEnabled(); // Changed: buttons are now enabled
   });
+
+  test('should handle multi-hop pathfinding (Three\'s Company to Elena\'s Fortune)', async ({ page }) => {
+    // Create game
+    await page.fill('input[placeholder="Enter your player name"]', 'PathfindingTest');
+    await page.click('button:has-text("Create Game")');
+    await page.waitForSelector('text=Game Status');
+    
+    // First move Discovery to Three's Company
+    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    await shipInfo.click();
+    
+    // Switch to Three's Company view and move ship there
+    await page.click('button:has-text("Three\'s Company")');
+    await page.waitForSelector('text=Viewing: Three\'s Company');
+    
+    const canvas = page.locator('canvas');
+    await canvas.click({ position: { x: 400, y: 300 } }); // Move to Three's Company
+    
+    // Wait for ship to arrive at Three's Company
+    await page.waitForTimeout(8000);
+    
+    // Now test multi-hop: Three's Company -> Elena's Fortune (via Argon Prime)
+    await page.click('button:has-text("Elena\'s Fortune")');
+    await page.waitForSelector('text=Viewing: Elena\'s Fortune');
+    
+    // Listen for console messages
+    const consoleMessages: string[] = [];
+    page.on('console', msg => {
+      consoleMessages.push(msg.text());
+    });
+    
+    // Click on Elena's Fortune map - should trigger multi-hop pathfinding
+    await canvas.click({ position: { x: 300, y: 200 } });
+    
+    await page.waitForTimeout(3000);
+    
+    // Verify pathfinding command was sent
+    const pathfindingCommand = consoleMessages.some(msg => 
+      msg.includes('Sending ship action') && msg.includes('elena-fortune')
+    );
+    
+    expect(pathfindingCommand).toBe(true);
+  });
 });

@@ -4,6 +4,12 @@ export interface Vector2 {
   y: number;
 }
 
+export interface ShipRoute {
+  targetSectorId: string;
+  targetPosition: Vector2;
+  viaGateId?: string;
+}
+
 export interface Ship {
   id: string;
   name: string;
@@ -13,6 +19,7 @@ export interface Ship {
   isMoving: boolean;
   cargo: ShipCargo[];
   maxCargo: number;
+  route?: ShipRoute[]; // Multi-hop navigation route
 }
 
 export interface ShipCargo {
