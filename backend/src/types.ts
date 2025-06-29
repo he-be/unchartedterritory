@@ -8,6 +8,7 @@ export interface Ship {
   id: string;
   name: string;
   position: Vector2;
+  destination?: Vector2;
   sectorId: string;
   isMoving: boolean;
   cargo: ShipCargo[];
@@ -46,7 +47,6 @@ export interface Gate {
   id: string;
   position: Vector2;
   targetSectorId: string;
-  targetGateId: string;
 }
 
 export interface Player {
@@ -68,7 +68,7 @@ export interface GameState {
 export interface GameEvent {
   id: string;
   timestamp: number;
-  type: 'ship_moved' | 'trade_completed' | 'sector_discovered';
+  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command';
   message: string;
   data?: Record<string, unknown>;
 }

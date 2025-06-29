@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from './services/api';
 import { WebSocketService } from './services/websocket';
-import type { GameState, GameEvent, ConnectionStatus } from './types';
+import type { GameState, GameEvent, ConnectionStatus, Vector2 } from './types';
+import SectorMap from './components/SectorMap';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -11,6 +12,7 @@ const App: React.FC = () => {
   const [wsService, setWsService] = useState<WebSocketService | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
 
   const handleCreateGame = async () => {
     if (!playerName.trim()) {
@@ -30,7 +32,11 @@ const App: React.FC = () => {
       const ws = new WebSocketService(wsUrl);
       
       ws.setOnStatusChange(setConnectionStatus);
-      ws.setOnGameStateUpdate(setGameState);
+      ws.setOnGameStateUpdate((newGameState) => {
+        console.log('Received game state update:', newGameState);
+        setGameState(newGameState);
+        setError(null); // Clear any errors when we receive game state
+      });
       ws.setOnEvents((newEvents) => {
         setEvents(prev => [...prev, ...newEvents].slice(-50)); // Keep last 50 events
       });
@@ -72,6 +78,26 @@ const App: React.FC = () => {
     const hours = Math.floor(gameTime / 3600000);
     const minutes = Math.floor((gameTime % 3600000) / 60000);
     return `${hours}h ${minutes}m`;
+  };
+
+  const handleShipCommand = (shipId: string, targetPosition: Vector2, targetId?: string) => {
+    if (!wsService) {
+      console.error('WebSocket service not available');
+      return;
+    }
+    
+    const command = {
+      type: 'shipCommand' as const,
+      shipId,
+      command: {
+        type: (targetId ? 'dock_at_station' : 'move') as const,
+        targetPosition,
+        stationId: targetId
+      }
+    };
+    
+    console.log('Sending ship command:', command);
+    wsService.sendMessage(command);
   };
 
   return (
@@ -128,15 +154,27 @@ const App: React.FC = () => {
             </p>
           </div>
 
+          <SectorMap 
+            gameState={gameState} 
+            selectedShipId={selectedShipId}
+            onShipCommand={handleShipCommand}
+          />
+
           <div className="card">
             <h3>Ships ({gameState.player.ships.length})</h3>
             {gameState.player.ships.map(ship => (
-              <div key={ship.id} style={{ 
-                border: '1px solid #444', 
-                borderRadius: '4px', 
-                padding: '10px', 
-                margin: '10px 0' 
-              }}>
+              <div 
+                key={ship.id} 
+                onClick={() => setSelectedShipId(ship.id)}
+                style={{ 
+                  border: selectedShipId === ship.id ? '2px solid #4a9eff' : '1px solid #444', 
+                  borderRadius: '4px', 
+                  padding: '10px', 
+                  margin: '10px 0',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.2s'
+                }}
+              >
                 <h4>{ship.name}</h4>
                 <p><strong>Position:</strong> ({ship.position.x}, {ship.position.y})</p>
                 <p><strong>Sector:</strong> {ship.sectorId}</p>

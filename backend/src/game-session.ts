@@ -23,9 +23,13 @@ export class GameSession implements DurableObject {
     
     // Initialize game state from storage
     this.state.blockConcurrencyWhile(async () => {
+      console.log('DO Constructor: Attempting to load gameState from storage...');
       const stored = await this.state.storage.get('gameState');
       if (stored) {
         this.gameState = stored as GameState;
+        console.log('DO Constructor: gameState loaded successfully.');
+      } else {
+        console.log('DO Constructor: No gameState found in storage.');
       }
     });
   }
@@ -76,7 +80,15 @@ export class GameSession implements DurableObject {
       return new Response('Player name required', { status: 400 });
     }
 
-    this.gameState = this.createInitialGameState(body.playerName);
+    // Get gameId from URL parameter
+    const url = new URL(request.url);
+    const gameId = url.searchParams.get('gameId');
+    
+    if (!gameId) {
+      return new Response('Game ID required', { status: 400 });
+    }
+
+    this.gameState = this.createInitialGameState(body.playerName, gameId);
     await this.saveGameState();
 
     return Response.json(this.gameState);
@@ -93,8 +105,19 @@ export class GameSession implements DurableObject {
   // WebSocket Hibernation handlers
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     try {
+      // Ensure gameState is loaded before processing messages
+      if (!this.gameState) {
+        const stored = await this.state.storage.get('gameState');
+        if (stored) {
+          this.gameState = stored as GameState;
+          console.log('Loaded gameState from storage in webSocketMessage');
+        }
+      }
+
       const data = JSON.parse(message as string) as WebSocketMessage;
+      console.log('Received WebSocket message:', data.type, data);
       const response = await this.processMessage(data);
+      console.log('Response:', response);
       
       if (response) {
         ws.send(JSON.stringify(response));
@@ -119,7 +142,16 @@ export class GameSession implements DurableObject {
 
   // Game loop using Alarms API
   async alarm(): Promise<void> {
-    if (!this.gameState) return;
+    // Load game state if not present
+    if (!this.gameState) {
+      const stored = await this.state.storage.get('gameState');
+      if (stored) {
+        this.gameState = stored as GameState;
+      } else {
+        console.log('Alarm triggered but no game state exists');
+        return;
+      }
+    }
 
     // Update game time
     const now = Date.now();
@@ -154,18 +186,36 @@ export class GameSession implements DurableObject {
   private async updateGameLogic(): Promise<void> {
     if (!this.gameState) return;
 
+    const SHIP_SPEED = 20; // Units per second (reduced for more visible movement)
+    const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
+
     // Update ship positions and process commands
     for (const ship of this.gameState.player.ships) {
-      if (ship.isMoving) {
-        // Simple movement simulation - in real game would use proper physics
-        ship.isMoving = false; // Stop movement for now
+      if (ship.isMoving && ship.destination) {
+        // Calculate direction and distance
+        const dx = ship.destination.x - ship.position.x;
+        const dy = ship.destination.y - ship.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
         
-        this.gameState.events.push({
-          id: crypto.randomUUID(),
-          timestamp: this.gameState.gameTime,
-          type: 'ship_moved',
-          message: `${ship.name} has reached its destination`,
-        });
+        if (distance < 2) { // Reduced threshold for arrival
+          // Arrived at destination
+          ship.position = { ...ship.destination };
+          ship.isMoving = false;
+          delete ship.destination;
+          
+          this.gameState.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState.gameTime,
+            type: 'ship_moved',
+            message: `${ship.name} has reached its destination`,
+          });
+        } else {
+          // Move towards destination
+          const moveDistance = SHIP_SPEED * deltaTime;
+          const ratio = moveDistance / distance;
+          ship.position.x += dx * ratio;
+          ship.position.y += dy * ratio;
+        }
       }
     }
 
@@ -183,7 +233,11 @@ export class GameSession implements DurableObject {
         return { type: 'pong' };
         
       case 'requestState':
-        return { type: 'gameState', gameState: this.gameState };
+        if (this.gameState) {
+          return { type: 'gameState', gameState: this.gameState };
+        } else {
+          return { type: 'error', message: 'Game state not available. Please refresh the page.' };
+        }
         
       case 'shipCommand':
         if (message.shipId && message.command) {
@@ -210,8 +264,15 @@ export class GameSession implements DurableObject {
     switch (command.type) {
       case 'move':
         if (command.targetPosition) {
-          ship.position = command.targetPosition;
+          ship.destination = { ...command.targetPosition };
           ship.isMoving = true;
+          
+          this.gameState!.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState!.gameTime,
+            type: 'ship_command',
+            message: `${ship.name} is moving to (${Math.round(command.targetPosition.x)}, ${Math.round(command.targetPosition.y)})`,
+          });
         }
         break;
         
@@ -220,8 +281,15 @@ export class GameSession implements DurableObject {
           const sector = this.gameState!.sectors.find(s => s.id === ship.sectorId);
           const station = sector?.stations.find(st => st.id === command.stationId);
           if (station) {
-            ship.position = station.position;
-            ship.isMoving = false;
+            ship.destination = { ...station.position };
+            ship.isMoving = true;
+            
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} is docking at ${station.name}`,
+            });
           }
         }
         break;
@@ -261,31 +329,114 @@ export class GameSession implements DurableObject {
     }
   }
 
-  private createInitialGameState(playerName: string): GameState {
-    const gameId = crypto.randomUUID();
+  private createInitialGameState(playerName: string, gameId: string): GameState {
     const playerId = crypto.randomUUID();
     
-    // Create initial sector
-    const sector: Sector = {
-      id: 'argon-prime',
-      name: 'Argon Prime',
-      coordinates: { x: 0, y: 0 },
-      stations: [{
-        id: 'trading-station-1',
-        name: 'Trading Station Alpha',
-        position: { x: 100, y: 100 },
-        sectorId: 'argon-prime',
-        inventory: [
+    // Create initial sectors with gates
+    const sectors: Sector[] = [
+      {
+        id: 'argon-prime',
+        name: 'Argon Prime',
+        coordinates: { x: 0, y: 0 },
+        stations: [
           {
-            wareId: 'energy-cells',
-            quantity: 1000,
-            buyPrice: 15,
-            sellPrice: 12
+            id: 'trading-station-1',
+            name: 'Trading Station Alpha',
+            position: { x: 100, y: 100 },
+            sectorId: 'argon-prime',
+            inventory: [
+              {
+                wareId: 'energy-cells',
+                quantity: 1000,
+                buyPrice: 15,
+                sellPrice: 12
+              },
+              {
+                wareId: 'silicon-wafers',
+                quantity: 500,
+                buyPrice: 25,
+                sellPrice: 20
+              }
+            ]
+          },
+          {
+            id: 'shipyard-1',
+            name: 'Argon Shipyard',
+            position: { x: -200, y: 150 },
+            sectorId: 'argon-prime',
+            inventory: []
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-threes-company',
+            position: { x: 400, y: 0 },
+            targetSectorId: 'threes-company'
+          },
+          {
+            id: 'gate-to-elena-fortune',
+            position: { x: -400, y: 0 },
+            targetSectorId: 'elena-fortune'
           }
         ]
-      }],
-      gates: []
-    };
+      },
+      {
+        id: 'threes-company',
+        name: "Three's Company",
+        coordinates: { x: 1, y: 0 },
+        stations: [
+          {
+            id: 'mining-station-1',
+            name: 'Ore Processing Plant',
+            position: { x: 0, y: 200 },
+            sectorId: 'threes-company',
+            inventory: [
+              {
+                wareId: 'ore',
+                quantity: 2000,
+                buyPrice: 8,
+                sellPrice: 5
+              }
+            ]
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-argon-prime-2',
+            position: { x: -400, y: 0 },
+            targetSectorId: 'argon-prime'
+          }
+        ]
+      },
+      {
+        id: 'elena-fortune',
+        name: "Elena's Fortune",
+        coordinates: { x: -1, y: 0 },
+        stations: [
+          {
+            id: 'tech-factory-1',
+            name: 'Advanced Tech Factory',
+            position: { x: 150, y: -100 },
+            sectorId: 'elena-fortune',
+            inventory: [
+              {
+                wareId: 'microchips',
+                quantity: 300,
+                buyPrice: 100,
+                sellPrice: 80
+              }
+            ]
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-argon-prime-3',
+            position: { x: 400, y: 0 },
+            targetSectorId: 'argon-prime'
+          }
+        ]
+      }
+    ];
 
     // Create initial ship
     const ship: Ship = {
@@ -308,7 +459,7 @@ export class GameSession implements DurableObject {
     return {
       id: gameId,
       player,
-      sectors: [sector],
+      sectors,
       currentSectorId: 'argon-prime',
       gameTime: 0,
       events: [{

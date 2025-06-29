@@ -31,8 +31,18 @@ app.post('/api/game/new', async (c) => {
     const durableObjectId = c.env.GAME_SESSION.idFromName(gameId);
     const gameSession = c.env.GAME_SESSION.get(durableObjectId);
     
-    // Forward request to Durable Object
-    const response = await gameSession.fetch(c.req.raw);
+    // Create URL with gameId parameter
+    const url = new URL(c.req.url);
+    url.searchParams.set('gameId', gameId);
+    
+    // Forward request to Durable Object with gameId
+    const newRequest = new Request(url.toString(), {
+      method: c.req.method,
+      headers: c.req.header(),
+      body: c.req.raw.body
+    });
+    
+    const response = await gameSession.fetch(newRequest);
     
     if (!response.ok) {
       return c.json({ error: 'Failed to create game' }, 500);

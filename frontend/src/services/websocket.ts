@@ -106,6 +106,10 @@ export class WebSocketService {
     this.send({ type: 'requestState' });
   }
 
+  sendMessage(message: WebSocketMessage): void {
+    this.send(message);
+  }
+
   // Event listener setters
   setOnStatusChange(callback: (status: ConnectionStatus) => void): void {
     this.onStatusChange = callback;
@@ -143,7 +147,15 @@ export class WebSocketService {
           break;
           
         case 'error':
-          this.onError?.(response.message || 'Unknown server error');
+          // Only show error if it's not about game initialization
+          if (!response.message?.includes('Game not initialized')) {
+            this.onError?.(response.message || 'Unknown server error');
+          }
+          break;
+          
+        case 'commandResult':
+          // Command executed successfully
+          console.log('Command result:', response.message);
           break;
           
         case 'pong':

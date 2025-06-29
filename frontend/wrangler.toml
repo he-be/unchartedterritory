@@ -10,7 +10,7 @@ command = "npm run build"
 directory = "./dist/assets"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+
 
 # Service binding to backend worker
 [[services]]

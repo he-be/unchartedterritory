@@ -14,7 +14,7 @@ class_name = "GameSession"
 # Durable Objects migrations
 [[migrations]]
 tag = "v1"
-new_classes = ["GameSession"]
+new_sqlite_classes = ["GameSession"]
 
 [env.staging]
 name = "unchartedterritory-backend-staging"
