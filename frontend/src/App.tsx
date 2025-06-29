@@ -209,9 +209,6 @@ const App: React.FC = () => {
                 <p><strong>Position:</strong> ({Math.round(ship.position.x)}, {Math.round(ship.position.y)})</p>
                 <p><strong>Sector:</strong> {ship.sectorId}</p>
                 <p><strong>Status:</strong> {ship.isMoving ? 'Moving' : 'Idle'}</p>
-                {ship.route && ship.route.length > 0 && (
-                  <p><strong>Route:</strong> {ship.route.length} step(s) to {ship.route[ship.route.length - 1].targetSectorId}</p>
-                )}
                 <p><strong>Cargo:</strong> {ship.cargo.length}/{ship.maxCargo}</p>
               </div>
             ))}

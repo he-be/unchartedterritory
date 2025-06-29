@@ -5,6 +5,7 @@ import type {
   Ship, 
   Gate,
   Vector2,
+  ShipQueueCommand,
   WebSocketMessage, 
   WebSocketResponse,
   ShipCommand,
@@ -205,28 +206,8 @@ export class GameSession implements DurableObject {
           ship.isMoving = false;
           delete ship.destination;
           
-          // Check if ship arrived at a gate and auto-activate it
-          const currentSector = this.gameState.sectors.find(s => s.id === ship.sectorId);
-          const nearbyGate = currentSector?.gates.find(gate => {
-            const gateDistance = Math.sqrt(
-              Math.pow(ship.position.x - gate.position.x, 2) + 
-              Math.pow(ship.position.y - gate.position.y, 2)
-            );
-            return gateDistance < 30;
-          });
-          
-          if (nearbyGate) {
-            // Auto-activate gate
-            console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
-            await this.processGateUsage(ship, nearbyGate);
-          } else {
-            this.gameState.events.push({
-              id: crypto.randomUUID(),
-              timestamp: this.gameState.gameTime,
-              type: 'ship_moved',
-              message: `${ship.name} has reached its destination`,
-            });
-          }
+          // Process command queue when ship arrives at destination
+          await this.processShipArrival(ship);
         } else {
           // Move towards destination
           const moveDistance = SHIP_SPEED * deltaTime;
@@ -235,6 +216,11 @@ export class GameSession implements DurableObject {
           ship.position.y += dy * ratio;
         }
       }
+    }
+
+    // Process command queues for all ships
+    for (const ship of this.gameState.player.ships) {
+      await this.processShipCommandQueue(ship);
     }
 
     // Keep only recent events (last 100)
@@ -403,27 +389,170 @@ export class GameSession implements DurableObject {
     return { type: 'commandResult', shipId, message: 'Moving to position' };
   }
 
-  private async processCrossSectorMovement(ship: Ship, currentSector: Sector, targetSectorId: string, _targetPosition: Vector2): Promise<WebSocketResponse> {
-    // Find the gate that leads to the target sector
-    const gateToTarget = currentSector.gates.find(gate => gate.targetSectorId === targetSectorId);
+  private async processCrossSectorMovement(ship: Ship, currentSector: Sector, targetSectorId: string, targetPosition: Vector2): Promise<WebSocketResponse> {
+    // Generate command queue for cross-sector movement
+    const commandQueue = this.generateCommandQueue(ship.sectorId, targetSectorId, targetPosition);
     
-    if (!gateToTarget) {
-      return { type: 'error', message: `No gate found from ${currentSector.name} to target sector` };
+    if (!commandQueue.length) {
+      return { type: 'error', message: `No route found from ${currentSector.name} to target sector` };
     }
 
-    // Move ship to the gate first - the auto-gate mechanism will handle the jump
-    ship.destination = { ...gateToTarget.position };
-    ship.isMoving = true;
+    // Clear existing queue and set new commands
+    ship.commandQueue = commandQueue;
     
-    this.gameState!.events.push({
-      id: crypto.randomUUID(),
-      timestamp: this.gameState!.gameTime,
-      type: 'ship_command',
-      message: `${ship.name} is traveling to ${targetSectorId} via gate`,
-    });
+    // Start executing the queue
+    return await this.executeNextQueueCommand(ship);
+  }
+
+  private generateCommandQueue(fromSectorId: string, toSectorId: string, finalPosition: Vector2): ShipQueueCommand[] {
+    if (fromSectorId === toSectorId) {
+      // Same sector - direct movement
+      return [{
+        id: crypto.randomUUID(),
+        type: 'move_to_position',
+        targetPosition: finalPosition,
+        targetSectorId: toSectorId
+      }];
+    }
+
+    // BFS to find shortest path between sectors
+    const queue: { sectorId: string; path: string[] }[] = [{ sectorId: fromSectorId, path: [fromSectorId] }];
+    const visited = new Set<string>();
+    
+    while (queue.length > 0) {
+      const { sectorId, path } = queue.shift()!;
+      
+      if (visited.has(sectorId)) continue;
+      visited.add(sectorId);
+      
+      if (sectorId === toSectorId) {
+        // Found path - convert to command queue
+        const commands: ShipQueueCommand[] = [];
+        
+        for (let i = 0; i < path.length - 1; i++) {
+          const currentSectorId = path[i];
+          const nextSectorId = path[i + 1];
+          const sector = this.gameState!.sectors.find(s => s.id === currentSectorId);
+          const gate = sector?.gates.find(g => g.targetSectorId === nextSectorId);
+          
+          if (gate) {
+            // Add command to move to gate
+            commands.push({
+              id: crypto.randomUUID(),
+              type: 'move_to_gate',
+              targetPosition: gate.position,
+              targetSectorId: currentSectorId,
+              gateId: gate.id
+            });
+            
+            // Add command to use gate
+            commands.push({
+              id: crypto.randomUUID(),
+              type: 'use_gate',
+              targetPosition: gate.position,
+              targetSectorId: nextSectorId,
+              gateId: gate.id
+            });
+          }
+        }
+        
+        // Add final movement command in target sector
+        commands.push({
+          id: crypto.randomUUID(),
+          type: 'move_to_position',
+          targetPosition: finalPosition,
+          targetSectorId: toSectorId
+        });
+        
+        return commands;
+      }
+      
+      // Add neighboring sectors to queue
+      const sector = this.gameState!.sectors.find(s => s.id === sectorId);
+      if (sector) {
+        for (const gate of sector.gates) {
+          if (!visited.has(gate.targetSectorId)) {
+            queue.push({ sectorId: gate.targetSectorId, path: [...path, gate.targetSectorId] });
+          }
+        }
+      }
+    }
+    
+    return []; // No route found
+  }
+
+  private async executeNextQueueCommand(ship: Ship): Promise<WebSocketResponse> {
+    if (ship.commandQueue.length === 0) {
+      ship.currentCommand = undefined;
+      return { type: 'commandResult', shipId: ship.id, message: 'All commands completed' };
+    }
+
+    const nextCommand = ship.commandQueue[0];
+    ship.currentCommand = nextCommand;
+    
+    switch (nextCommand.type) {
+      case 'move_to_position':
+        ship.destination = { ...nextCommand.targetPosition };
+        ship.isMoving = true;
+        
+        this.gameState!.events.push({
+          id: crypto.randomUUID(),
+          timestamp: this.gameState!.gameTime,
+          type: 'ship_command',
+          message: `${ship.name} is moving to position in ${nextCommand.targetSectorId}`,
+        });
+        break;
+        
+      case 'move_to_gate':
+        ship.destination = { ...nextCommand.targetPosition };
+        ship.isMoving = true;
+        
+        this.gameState!.events.push({
+          id: crypto.randomUUID(),
+          timestamp: this.gameState!.gameTime,
+          type: 'ship_command',
+          message: `${ship.name} is moving to gate ${nextCommand.gateId}`,
+        });
+        break;
+        
+      case 'use_gate': {
+        // Gate usage will be handled automatically when ship reaches gate position
+        // This command type is primarily for queue organization
+        const gate = this.gameState!.sectors
+          .find(s => s.id === ship.sectorId)?.gates
+          .find(g => g.id === nextCommand.gateId);
+        
+        if (gate) {
+          await this.processGateUsage(ship, gate);
+          // Remove the completed command
+          ship.commandQueue.shift();
+          ship.currentCommand = undefined;
+        }
+        
+        this.gameState!.events.push({
+          id: crypto.randomUUID(),
+          timestamp: this.gameState!.gameTime,
+          type: 'ship_command',
+          message: `${ship.name} used gate to ${nextCommand.targetSectorId}`,
+        });
+        break;
+      }
+        
+      case 'dock_at_station':
+        ship.destination = { ...nextCommand.targetPosition };
+        ship.isMoving = true;
+        
+        this.gameState!.events.push({
+          id: crypto.randomUUID(),
+          timestamp: this.gameState!.gameTime,
+          type: 'ship_command',
+          message: `${ship.name} is docking at station ${nextCommand.stationId}`,
+        });
+        break;
+    }
 
     await this.saveGameState();
-    return { type: 'commandResult', shipId: ship.id, message: `Moving to gate for cross-sector travel to ${targetSectorId}` };
+    return { type: 'commandResult', shipId: ship.id, message: `Executing command: ${nextCommand.type}` };
   }
 
   private async processTrade(shipId: string, tradeData: TradeData): Promise<WebSocketResponse> {
@@ -573,7 +702,9 @@ export class GameSession implements DurableObject {
       sectorId: 'argon-prime',
       isMoving: false,
       cargo: [],
-      maxCargo: 100
+      maxCargo: 100,
+      commandQueue: [],
+      currentCommand: undefined
     };
 
     const player: Player = {
@@ -638,6 +769,54 @@ export class GameSession implements DurableObject {
     });
     
     console.log(`Ship ${ship.name} jumped from ${currentSector?.name} to ${targetSector.name}`);
+  }
+
+  private async processShipArrival(ship: Ship): Promise<void> {
+    if (!this.gameState) return;
+
+    // Check if ship arrived at a gate and auto-activate it
+    const currentSector = this.gameState.sectors.find(s => s.id === ship.sectorId);
+    const nearbyGate = currentSector?.gates.find(gate => {
+      const gateDistance = Math.sqrt(
+        Math.pow(ship.position.x - gate.position.x, 2) + 
+        Math.pow(ship.position.y - gate.position.y, 2)
+      );
+      return gateDistance < 30;
+    });
+    
+    if (nearbyGate) {
+      // Auto-activate gate
+      console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
+      await this.processGateUsage(ship, nearbyGate);
+      
+      // After gate usage, mark current command as completed and continue queue
+      if (ship.currentCommand && ship.commandQueue.length > 0) {
+        ship.commandQueue.shift(); // Remove completed command
+        ship.currentCommand = undefined;
+      }
+    } else {
+      // Normal arrival - mark current command as completed
+      if (ship.currentCommand && ship.commandQueue.length > 0) {
+        ship.commandQueue.shift(); // Remove completed command
+        ship.currentCommand = undefined;
+      }
+      
+      this.gameState.events.push({
+        id: crypto.randomUUID(),
+        timestamp: this.gameState.gameTime,
+        type: 'ship_moved',
+        message: `${ship.name} has reached its destination`,
+      });
+    }
+  }
+
+  private async processShipCommandQueue(ship: Ship): Promise<void> {
+    if (!this.gameState) return;
+
+    // If ship is not moving and has commands in queue, execute next command
+    if (!ship.isMoving && ship.commandQueue.length > 0 && !ship.currentCommand) {
+      await this.executeNextQueueCommand(ship);
+    }
   }
 
   private async saveGameState(): Promise<void> {

@@ -37,14 +37,14 @@ test.describe('Sector Navigation', () => {
     // Gate to Three's Company should be at (400, 0), screen position around (640, 300)
     await canvas.click({ position: { x: 640, y: 300 } });
     
-    // Wait longer for ship to reach the gate position
-    await page.waitForTimeout(5000);
+    // Wait for ship to reach the gate position
+    await page.waitForTimeout(3000);
     
     // Now click on the gate itself to use it
     await canvas.click({ position: { x: 640, y: 300 } });
     
-    // Wait longer for ship to reach gate and auto-jump
-    await page.waitForTimeout(10000);
+    // Wait for ship to reach gate and auto-jump
+    await page.waitForTimeout(5000);
     
     // Check that sector changed
     const gateMovement = consoleMessages.some(msg => msg.includes('Sending ship action'));
@@ -95,7 +95,7 @@ test.describe('Sector Navigation', () => {
     await canvas.click({ position: { x: 640, y: 300 } }); // Gate position
     
     // Wait for ship to move to gate and auto-jump
-    await page.waitForTimeout(8000);
+    await page.waitForTimeout(4000);
     
     // Should see movement to gate and auto-jump  
     const gateMovement = consoleMessages.some(msg => 
@@ -163,7 +163,7 @@ test.describe('Sector Navigation', () => {
     await canvas.click({ position: { x: 400, y: 300 } }); // Move to Three's Company
     
     // Wait for ship to arrive at Three's Company
-    await page.waitForTimeout(8000);
+    await page.waitForTimeout(4000);
     
     // Now test multi-hop: Three's Company -> Elena's Fortune (via Argon Prime)
     await page.click('button:has-text("Elena\'s Fortune")');

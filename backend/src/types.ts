@@ -13,6 +13,8 @@ export interface Ship {
   isMoving: boolean;
   cargo: ShipCargo[];
   maxCargo: number;
+  commandQueue: ShipQueueCommand[]; // Queue of commands to execute
+  currentCommand?: ShipQueueCommand; // Currently executing command
 }
 
 export interface ShipCargo {
@@ -97,6 +99,16 @@ export interface ShipCommand {
   type: 'move' | 'dock_at_station' | 'auto_move';
   targetPosition?: Vector2;
   stationId?: string;
+}
+
+export interface ShipQueueCommand {
+  id: string;
+  type: 'move_to_position' | 'move_to_gate' | 'use_gate' | 'dock_at_station';
+  targetPosition: Vector2;
+  targetSectorId?: string;
+  gateId?: string;
+  stationId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TradeData {
