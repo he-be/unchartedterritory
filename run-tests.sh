@@ -8,16 +8,16 @@ cd ..
 
 echo "Starting frontend server..."
 cd frontend
-npm run dev &
+npx wrangler dev --port 39173 &
 FRONTEND_PID=$!
 cd ..
 
 echo "Waiting for servers to start..."
-sleep 5
+sleep 10
 
 echo "Running Playwright tests..."
 cd frontend
-npx playwright test
+npx playwright test --max-failures=1
 
 # Capture test exit code
 TEST_EXIT_CODE=$?

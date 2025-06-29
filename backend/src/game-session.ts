@@ -265,7 +265,7 @@ export class GameSession implements DurableObject {
         
       case 'shipAction':
         if (message.shipId && message.targetPosition) {
-          return await this.processShipAction(message.shipId, message.targetPosition);
+          return await this.processShipAction(message.shipId, message.targetPosition, message.targetSectorId);
         }
         break;
         
@@ -324,7 +324,7 @@ export class GameSession implements DurableObject {
     return { type: 'commandResult', shipId, message: 'Command executed' };
   }
 
-  private async processShipAction(shipId: string, targetPosition: Vector2): Promise<WebSocketResponse> {
+  private async processShipAction(shipId: string, targetPosition: Vector2, targetSectorId?: string): Promise<WebSocketResponse> {
     const ship = this.gameState!.player.ships.find(s => s.id === shipId);
     if (!ship) {
       return { type: 'error', message: 'Ship not found' };
@@ -335,7 +335,13 @@ export class GameSession implements DurableObject {
       return { type: 'error', message: 'Current sector not found' };
     }
 
-    // Check what was clicked based on target position
+    // If targetSectorId is specified and different from ship's current sector,
+    // this is a cross-sector movement request
+    if (targetSectorId && targetSectorId !== ship.sectorId) {
+      return await this.processCrossSectorMovement(ship, currentSector, targetSectorId, targetPosition);
+    }
+
+    // Same sector movement - check what was clicked based on target position
     // Check stations first (smaller hit area)
     const clickedStation = currentSector.stations.find(station => {
       const dx = targetPosition.x - station.position.x;
@@ -395,6 +401,29 @@ export class GameSession implements DurableObject {
 
     await this.saveGameState();
     return { type: 'commandResult', shipId, message: 'Moving to position' };
+  }
+
+  private async processCrossSectorMovement(ship: Ship, currentSector: Sector, targetSectorId: string, _targetPosition: Vector2): Promise<WebSocketResponse> {
+    // Find the gate that leads to the target sector
+    const gateToTarget = currentSector.gates.find(gate => gate.targetSectorId === targetSectorId);
+    
+    if (!gateToTarget) {
+      return { type: 'error', message: `No gate found from ${currentSector.name} to target sector` };
+    }
+
+    // Move ship to the gate first - the auto-gate mechanism will handle the jump
+    ship.destination = { ...gateToTarget.position };
+    ship.isMoving = true;
+    
+    this.gameState!.events.push({
+      id: crypto.randomUUID(),
+      timestamp: this.gameState!.gameTime,
+      type: 'ship_command',
+      message: `${ship.name} is traveling to ${targetSectorId} via gate`,
+    });
+
+    await this.saveGameState();
+    return { type: 'commandResult', shipId: ship.id, message: `Moving to gate for cross-sector travel to ${targetSectorId}` };
   }
 
   private async processTrade(shipId: string, tradeData: TradeData): Promise<WebSocketResponse> {

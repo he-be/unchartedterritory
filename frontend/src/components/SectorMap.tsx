@@ -5,7 +5,7 @@ interface SectorMapProps {
   gameState: GameState;
   selectedShipId?: string | null;
   currentViewSectorId: string;
-  onShipCommand?: (shipId: string, targetPosition: Vector2) => void;
+  onShipCommand?: (shipId: string, targetPosition: Vector2, targetSectorId?: string) => void;
 }
 
 const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, currentViewSectorId, onShipCommand }) => {
@@ -158,19 +158,15 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, curren
       return;
     }
 
-    // Check if selected ship is in the currently viewed sector
-    const selectedShip = gameState.player.ships.find(s => s.id === selectedShipId);
-    if (!selectedShip || selectedShip.sectorId !== currentViewSectorId) {
-      console.log('Selected ship is not in the current sector, ignoring click');
-      return;
-    }
+    // Allow commands to ships regardless of which sector is being viewed
+    // This enables cross-sector ship movement (e.g., ship auto-traveling to viewed sector)
 
     const { x: screenX, y: screenY } = getCanvasMousePos(e);
     const { x: worldX, y: worldY } = screenToWorld(screenX, screenY);
     console.log('Click position:', { screenX, screenY, worldX, worldY });
 
-    // Simply send the click position to backend - let backend determine what was clicked
-    onShipCommand(selectedShipId, { x: worldX, y: worldY });
+    // Send the click position and target sector to backend for cross-sector movement
+    onShipCommand(selectedShipId, { x: worldX, y: worldY }, currentViewSectorId);
   };
 
   const handleCanvasHover = (e: React.MouseEvent<HTMLCanvasElement>) => {

@@ -5,6 +5,7 @@ export interface WebSocketMessage {
   shipId?: string;
   command?: any;
   targetPosition?: { x: number; y: number };
+  targetSectorId?: string;
   tradeData?: any;
   data?: Record<string, unknown>;
 }

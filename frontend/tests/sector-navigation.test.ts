@@ -120,28 +120,28 @@ test.describe('Sector Navigation', () => {
     }
   });
 
-  test('should show sector navigation buttons as disabled (server-controlled)', async ({ page }) => {
+  test('should show sector navigation buttons as enabled for manual control', async ({ page }) => {
     // Create game
     await page.fill('input[placeholder="Enter your player name"]', 'ServerControlTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
     
-    // Should start in Argon Prime
-    await expect(page.locator('text=Current: Argon Prime')).toBeVisible();
+    // Should start in Argon Prime  
+    await expect(page.locator('text=Viewing: Argon Prime')).toBeVisible();
     
     // Verify navigation buttons are disabled (server-controlled)
     const threesCompanyButton = page.locator('button:has-text("Three\'s Company")');
     const elenaFortuneButton = page.locator('button:has-text("Elena\'s Fortune")');
     
-    await expect(threesCompanyButton).toBeDisabled();
-    await expect(elenaFortuneButton).toBeDisabled();
+    await expect(threesCompanyButton).toBeEnabled(); // Changed: buttons are now enabled
+    await expect(elenaFortuneButton).toBeEnabled(); // Changed: buttons are now enabled
     
-    // Verify server-controlled message is shown
-    await expect(page.locator('text=Server-controlled')).toBeVisible();
+    // Verify navigation works
+    await threesCompanyButton.click();
+    await expect(page.locator('text=Viewing: Three\'s Company')).toBeVisible();
     
-    // Current sector button should be active but disabled  
+    // Current sector button should be active
     const argonPrimeButton = page.locator('button:has-text("Argon Prime")');
-    await expect(argonPrimeButton).toBeDisabled();
-    await expect(argonPrimeButton).toHaveCSS('background-color', 'rgb(74, 158, 255)');
+    await expect(argonPrimeButton).toBeEnabled(); // Changed: buttons are now enabled
   });
 });

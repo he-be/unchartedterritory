@@ -83,7 +83,7 @@ const App: React.FC = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const handleShipCommand = (shipId: string, targetPosition: Vector2) => {
+  const handleShipCommand = (shipId: string, targetPosition: Vector2, targetSectorId?: string) => {
     if (!wsService) {
       console.error('WebSocket service not available');
       return;
@@ -93,7 +93,8 @@ const App: React.FC = () => {
     const message = {
       type: 'shipAction' as const,
       shipId,
-      targetPosition
+      targetPosition,
+      targetSectorId: targetSectorId || currentViewSectorId || gameState?.currentSectorId
     };
     
     console.log('Sending ship action:', message);

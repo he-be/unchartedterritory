@@ -79,6 +79,7 @@ export interface WebSocketMessage {
   shipId?: string;
   command?: ShipCommand;
   targetPosition?: Vector2;
+  targetSectorId?: string;
   tradeData?: TradeData;
   data?: Record<string, unknown>;
 }
