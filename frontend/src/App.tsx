@@ -210,6 +210,28 @@ const App: React.FC = () => {
                 <p><strong>Sector:</strong> {ship.sectorId}</p>
                 <p><strong>Status:</strong> {ship.isMoving ? 'Moving' : 'Idle'}</p>
                 <p><strong>Cargo:</strong> {ship.cargo.length}/{ship.maxCargo}</p>
+                {ship.commandQueue && ship.commandQueue.length > 0 && (
+                  <div style={{ marginTop: '10px', padding: '5px', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
+                    <p><strong>Command Queue ({ship.commandQueue.length}):</strong></p>
+                    {ship.currentCommand && (
+                      <p style={{ color: '#4a9eff', fontSize: '12px' }}>
+                        ▶ Current: {ship.currentCommand.type}
+                        {ship.currentCommand.targetSectorId && ` → ${ship.currentCommand.targetSectorId}`}
+                      </p>
+                    )}
+                    {ship.commandQueue.slice(0, 3).map((cmd, index) => (
+                      <p key={cmd.id} style={{ fontSize: '12px', marginLeft: '10px', color: '#888' }}>
+                        {index + 1}. {cmd.type}
+                        {cmd.targetSectorId && ` → ${cmd.targetSectorId}`}
+                      </p>
+                    ))}
+                    {ship.commandQueue.length > 3 && (
+                      <p style={{ fontSize: '12px', marginLeft: '10px', color: '#666' }}>
+                        ... and {ship.commandQueue.length - 3} more
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

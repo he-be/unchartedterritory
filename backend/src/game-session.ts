@@ -487,7 +487,8 @@ export class GameSession implements DurableObject {
       return { type: 'commandResult', shipId: ship.id, message: 'All commands completed' };
     }
 
-    const nextCommand = ship.commandQueue[0];
+    // Remove the command from queue and set as current
+    const nextCommand = ship.commandQueue.shift()!;
     ship.currentCommand = nextCommand;
     
     switch (nextCommand.type) {
@@ -524,8 +525,7 @@ export class GameSession implements DurableObject {
         
         if (gate) {
           await this.processGateUsage(ship, gate);
-          // Remove the completed command
-          ship.commandQueue.shift();
+          // Clear current command after gate usage
           ship.currentCommand = undefined;
         }
         
@@ -753,6 +753,12 @@ export class GameSession implements DurableObject {
       ship.position = { x: 0, y: 0 }; // Center of target sector
     }
     
+    // Process next command in queue immediately after gate jump
+    if (ship.commandQueue.length > 0) {
+      // Don't wait for next tick, execute immediately
+      await this.processShipCommandQueue(ship);
+    }
+    
     // Do NOT automatically update currentSectorId - sector map should be controlled independently
     // Ships can move between sectors without forcing the map to change
     
@@ -787,17 +793,17 @@ export class GameSession implements DurableObject {
     if (nearbyGate) {
       // Auto-activate gate
       console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
+      console.log(`Current command queue length: ${ship.commandQueue.length}`);
       await this.processGateUsage(ship, nearbyGate);
       
-      // After gate usage, mark current command as completed and continue queue
-      if (ship.currentCommand && ship.commandQueue.length > 0) {
-        ship.commandQueue.shift(); // Remove completed command
+      // After gate usage, clear current command
+      if (ship.currentCommand) {
+        console.log(`Completed command: ${ship.currentCommand.type}`);
         ship.currentCommand = undefined;
       }
     } else {
-      // Normal arrival - mark current command as completed
-      if (ship.currentCommand && ship.commandQueue.length > 0) {
-        ship.commandQueue.shift(); // Remove completed command
+      // Normal arrival - clear current command
+      if (ship.currentCommand) {
         ship.currentCommand = undefined;
       }
       
@@ -816,6 +822,7 @@ export class GameSession implements DurableObject {
     // If ship is not moving and has commands in queue, execute next command
     if (!ship.isMoving && ship.commandQueue.length > 0 && !ship.currentCommand) {
       await this.executeNextQueueCommand(ship);
+      await this.saveGameState(); // Ensure UI gets updated queue state
     }
   }
 

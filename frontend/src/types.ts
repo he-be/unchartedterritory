@@ -4,6 +4,16 @@ export interface Vector2 {
   y: number;
 }
 
+export interface ShipQueueCommand {
+  id: string;
+  type: 'move_to_position' | 'move_to_gate' | 'use_gate' | 'dock_at_station';
+  targetPosition: Vector2;
+  targetSectorId?: string;
+  gateId?: string;
+  stationId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Ship {
   id: string;
   name: string;
@@ -13,6 +23,8 @@ export interface Ship {
   isMoving: boolean;
   cargo: ShipCargo[];
   maxCargo: number;
+  commandQueue: ShipQueueCommand[];
+  currentCommand?: ShipQueueCommand;
 }
 
 export interface ShipCargo {
