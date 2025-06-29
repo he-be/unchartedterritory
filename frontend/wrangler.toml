@@ -1,0 +1,26 @@
+name = "unchartedterritory-frontend"
+main = "dist/worker.js"
+compatibility_date = "2024-01-01"
+
+[build]
+command = "npm run build"
+
+# Static asset hosting configuration
+[assets]
+directory = "./dist/assets"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+
+# Service binding to backend worker
+[[services]]
+binding = "BACKEND"
+service = "unchartedterritory-backend"
+
+[env.staging]
+name = "unchartedterritory-frontend-staging"
+
+# Service binding for staging
+[[env.staging.services]]
+binding = "BACKEND"
+service = "unchartedterritory-backend-staging"

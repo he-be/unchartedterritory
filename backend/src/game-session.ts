@@ -1,0 +1,479 @@
+import type { 
+  GameState, 
+  Player, 
+  Sector, 
+  Ship, 
+  WebSocketMessage, 
+  WebSocketResponse,
+  ShipCommand,
+  TradeData
+} from './types';
+
+// Game loop configuration
+const TICK_RATE_HZ = 10;
+const TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ;
+
+export class GameSession implements DurableObject {
+  private state: DurableObjectState;
+  private gameState: GameState | null = null;
+  private lastUpdateTime = 0;
+
+  constructor(state: DurableObjectState, _env: unknown) {
+    this.state = state;
+    
+    // Initialize game state from storage
+    this.state.blockConcurrencyWhile(async () => {
+      console.log('DO Constructor: Attempting to load gameState from storage...');
+      const stored = await this.state.storage.get('gameState');
+      if (stored) {
+        this.gameState = stored as GameState;
+        console.log('DO Constructor: gameState loaded successfully.');
+      } else {
+        console.log('DO Constructor: No gameState found in storage.');
+      }
+    });
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    
+    // Handle WebSocket connections
+    if (request.headers.get('Upgrade') === 'websocket') {
+      return this.handleWebSocketUpgrade(request);
+    }
+    
+    // Handle HTTP API requests
+    if (url.pathname.endsWith('/new')) {
+      return this.handleNewGame(request);
+    }
+    
+    if (url.pathname.endsWith('/state')) {
+      return this.handleGetState();
+    }
+    
+    return new Response('Not Found', { status: 404 });
+  }
+
+  private async handleWebSocketUpgrade(_request: Request): Promise<Response> {
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    // Use WebSocket Hibernation for cost optimization
+    this.state.acceptWebSocket(server);
+
+    // Start game loop if this is the first connection
+    const clients = this.state.getWebSockets();
+    if (clients.length === 1) {
+      await this.startGameLoop();
+    }
+
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+    });
+  }
+
+  private async handleNewGame(request: Request): Promise<Response> {
+    const body = await request.json() as { playerName: string };
+    
+    if (!body.playerName) {
+      return new Response('Player name required', { status: 400 });
+    }
+
+    // Get gameId from URL parameter
+    const url = new URL(request.url);
+    const gameId = url.searchParams.get('gameId');
+    
+    if (!gameId) {
+      return new Response('Game ID required', { status: 400 });
+    }
+
+    this.gameState = this.createInitialGameState(body.playerName, gameId);
+    await this.saveGameState();
+
+    return Response.json(this.gameState);
+  }
+
+  private async handleGetState(): Promise<Response> {
+    if (!this.gameState) {
+      return new Response('Game not found', { status: 404 });
+    }
+
+    return Response.json(this.gameState);
+  }
+
+  // WebSocket Hibernation handlers
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    try {
+      // Ensure gameState is loaded before processing messages
+      if (!this.gameState) {
+        const stored = await this.state.storage.get('gameState');
+        if (stored) {
+          this.gameState = stored as GameState;
+          console.log('Loaded gameState from storage in webSocketMessage');
+        }
+      }
+
+      const data = JSON.parse(message as string) as WebSocketMessage;
+      console.log('Received WebSocket message:', data.type, data);
+      const response = await this.processMessage(data);
+      console.log('Response:', response);
+      
+      if (response) {
+        ws.send(JSON.stringify(response));
+      }
+      
+      // Broadcast state updates to all clients
+      await this.broadcastGameState();
+      
+    } catch (error) {
+      console.error('Error processing WebSocket message:', error);
+      const errorResponse: WebSocketResponse = {
+        type: 'error',
+        message: 'Failed to process message'
+      };
+      ws.send(JSON.stringify(errorResponse));
+    }
+  }
+
+  async webSocketClose(_ws: WebSocket, code: number, reason: string, _wasClean: boolean): Promise<void> {
+    console.log(`WebSocket closed: ${code} ${reason}`);
+  }
+
+  // Game loop using Alarms API
+  async alarm(): Promise<void> {
+    // Load game state if not present
+    if (!this.gameState) {
+      const stored = await this.state.storage.get('gameState');
+      if (stored) {
+        this.gameState = stored as GameState;
+      } else {
+        console.log('Alarm triggered but no game state exists');
+        return;
+      }
+    }
+
+    // Update game time
+    const now = Date.now();
+    if (this.lastUpdateTime > 0) {
+      const deltaTime = now - this.lastUpdateTime;
+      this.gameState.gameTime += deltaTime;
+    }
+    this.lastUpdateTime = now;
+
+    // Process game logic updates
+    await this.updateGameLogic();
+    
+    // Broadcast state to all connected clients
+    await this.broadcastGameState();
+    
+    // Save updated state
+    await this.saveGameState();
+    
+    // Schedule next tick
+    await this.state.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+  }
+
+  private async startGameLoop(): Promise<void> {
+    // Check if game loop is already running
+    const currentAlarm = await this.state.storage.getAlarm();
+    if (currentAlarm === null) {
+      this.lastUpdateTime = Date.now();
+      await this.state.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+    }
+  }
+
+  private async updateGameLogic(): Promise<void> {
+    if (!this.gameState) return;
+
+    const SHIP_SPEED = 20; // Units per second (reduced for more visible movement)
+    const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
+
+    // Update ship positions and process commands
+    for (const ship of this.gameState.player.ships) {
+      if (ship.isMoving && ship.destination) {
+        // Calculate direction and distance
+        const dx = ship.destination.x - ship.position.x;
+        const dy = ship.destination.y - ship.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < 2) { // Reduced threshold for arrival
+          // Arrived at destination
+          ship.position = { ...ship.destination };
+          ship.isMoving = false;
+          delete ship.destination;
+          
+          this.gameState.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState.gameTime,
+            type: 'ship_moved',
+            message: `${ship.name} has reached its destination`,
+          });
+        } else {
+          // Move towards destination
+          const moveDistance = SHIP_SPEED * deltaTime;
+          const ratio = moveDistance / distance;
+          ship.position.x += dx * ratio;
+          ship.position.y += dy * ratio;
+        }
+      }
+    }
+
+    // Keep only recent events (last 100)
+    this.gameState.events = this.gameState.events.slice(-100);
+  }
+
+  private async processMessage(message: WebSocketMessage): Promise<WebSocketResponse | null> {
+    if (!this.gameState) {
+      return { type: 'error', message: 'Game not initialized' };
+    }
+
+    switch (message.type) {
+      case 'ping':
+        return { type: 'pong' };
+        
+      case 'requestState':
+        if (this.gameState) {
+          return { type: 'gameState', gameState: this.gameState };
+        } else {
+          return { type: 'error', message: 'Game state not available. Please refresh the page.' };
+        }
+        
+      case 'shipCommand':
+        if (message.shipId && message.command) {
+          return await this.processShipCommand(message.shipId, message.command);
+        }
+        break;
+        
+      case 'trade':
+        if (message.shipId && message.tradeData) {
+          return await this.processTrade(message.shipId, message.tradeData);
+        }
+        break;
+    }
+
+    return { type: 'error', message: 'Invalid message type' };
+  }
+
+  private async processShipCommand(shipId: string, command: ShipCommand): Promise<WebSocketResponse> {
+    const ship = this.gameState!.player.ships.find(s => s.id === shipId);
+    if (!ship) {
+      return { type: 'error', message: 'Ship not found' };
+    }
+
+    switch (command.type) {
+      case 'move':
+        if (command.targetPosition) {
+          ship.destination = { ...command.targetPosition };
+          ship.isMoving = true;
+          
+          this.gameState!.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState!.gameTime,
+            type: 'ship_command',
+            message: `${ship.name} is moving to (${Math.round(command.targetPosition.x)}, ${Math.round(command.targetPosition.y)})`,
+          });
+        }
+        break;
+        
+      case 'dock_at_station':
+        if (command.stationId) {
+          const sector = this.gameState!.sectors.find(s => s.id === ship.sectorId);
+          const station = sector?.stations.find(st => st.id === command.stationId);
+          if (station) {
+            ship.destination = { ...station.position };
+            ship.isMoving = true;
+            
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} is docking at ${station.name}`,
+            });
+          }
+        }
+        break;
+    }
+
+    await this.saveGameState();
+    return { type: 'commandResult', shipId, message: 'Command executed' };
+  }
+
+  private async processTrade(shipId: string, tradeData: TradeData): Promise<WebSocketResponse> {
+    // Simplified trade logic
+    this.gameState!.events.push({
+      id: crypto.randomUUID(),
+      timestamp: this.gameState!.gameTime,
+      type: 'trade_completed',
+      message: `Trade completed: ${tradeData.action} ${tradeData.quantity} of ${tradeData.wareId}`,
+    });
+
+    await this.saveGameState();
+    return { type: 'tradeResult', shipId, message: 'Trade completed' };
+  }
+
+  private async broadcastGameState(): Promise<void> {
+    if (!this.gameState) return;
+
+    const message: WebSocketResponse = {
+      type: 'stateUpdate',
+      gameState: this.gameState,
+      events: this.gameState.events.slice(-10) // Send recent events
+    };
+
+    const clients = this.state.getWebSockets();
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(message));
+      }
+    }
+  }
+
+  private createInitialGameState(playerName: string, gameId: string): GameState {
+    const playerId = crypto.randomUUID();
+    
+    // Create initial sectors with gates
+    const sectors: Sector[] = [
+      {
+        id: 'argon-prime',
+        name: 'Argon Prime',
+        coordinates: { x: 0, y: 0 },
+        stations: [
+          {
+            id: 'trading-station-1',
+            name: 'Trading Station Alpha',
+            position: { x: 100, y: 100 },
+            sectorId: 'argon-prime',
+            inventory: [
+              {
+                wareId: 'energy-cells',
+                quantity: 1000,
+                buyPrice: 15,
+                sellPrice: 12
+              },
+              {
+                wareId: 'silicon-wafers',
+                quantity: 500,
+                buyPrice: 25,
+                sellPrice: 20
+              }
+            ]
+          },
+          {
+            id: 'shipyard-1',
+            name: 'Argon Shipyard',
+            position: { x: -200, y: 150 },
+            sectorId: 'argon-prime',
+            inventory: []
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-threes-company',
+            position: { x: 400, y: 0 },
+            targetSectorId: 'threes-company'
+          },
+          {
+            id: 'gate-to-elena-fortune',
+            position: { x: -400, y: 0 },
+            targetSectorId: 'elena-fortune'
+          }
+        ]
+      },
+      {
+        id: 'threes-company',
+        name: "Three's Company",
+        coordinates: { x: 1, y: 0 },
+        stations: [
+          {
+            id: 'mining-station-1',
+            name: 'Ore Processing Plant',
+            position: { x: 0, y: 200 },
+            sectorId: 'threes-company',
+            inventory: [
+              {
+                wareId: 'ore',
+                quantity: 2000,
+                buyPrice: 8,
+                sellPrice: 5
+              }
+            ]
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-argon-prime-2',
+            position: { x: -400, y: 0 },
+            targetSectorId: 'argon-prime'
+          }
+        ]
+      },
+      {
+        id: 'elena-fortune',
+        name: "Elena's Fortune",
+        coordinates: { x: -1, y: 0 },
+        stations: [
+          {
+            id: 'tech-factory-1',
+            name: 'Advanced Tech Factory',
+            position: { x: 150, y: -100 },
+            sectorId: 'elena-fortune',
+            inventory: [
+              {
+                wareId: 'microchips',
+                quantity: 300,
+                buyPrice: 100,
+                sellPrice: 80
+              }
+            ]
+          }
+        ],
+        gates: [
+          {
+            id: 'gate-to-argon-prime-3',
+            position: { x: 400, y: 0 },
+            targetSectorId: 'argon-prime'
+          }
+        ]
+      }
+    ];
+
+    // Create initial ship
+    const ship: Ship = {
+      id: crypto.randomUUID(),
+      name: 'Discovery',
+      position: { x: 50, y: 50 },
+      sectorId: 'argon-prime',
+      isMoving: false,
+      cargo: [],
+      maxCargo: 100
+    };
+
+    const player: Player = {
+      id: playerId,
+      name: playerName,
+      credits: 10000,
+      ships: [ship]
+    };
+
+    return {
+      id: gameId,
+      player,
+      sectors,
+      currentSectorId: 'argon-prime',
+      gameTime: 0,
+      events: [{
+        id: crypto.randomUUID(),
+        timestamp: 0,
+        type: 'sector_discovered',
+        message: 'Welcome to Argon Prime!'
+      }]
+    };
+  }
+
+  private async saveGameState(): Promise<void> {
+    if (this.gameState) {
+      await this.state.storage.put('gameState', this.gameState);
+    }
+  }
+}
