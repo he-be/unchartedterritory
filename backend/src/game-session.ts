@@ -593,8 +593,8 @@ export class GameSession implements DurableObject {
       ship.position = { x: 0, y: 0 }; // Center of target sector
     }
     
-    // Update current sector if this is the player's ship (assuming single player for now)
-    this.gameState!.currentSectorId = gate.targetSectorId;
+    // Do NOT automatically update currentSectorId - sector map should be controlled independently
+    // Ships can move between sectors without forcing the map to change
     
     this.gameState!.events.push({
       id: crypto.randomUUID(),

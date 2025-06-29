@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
+  const [currentViewSectorId, setCurrentViewSectorId] = useState<string | null>(null);
 
   const handleCreateGame = async () => {
     if (!playerName.trim()) {
@@ -26,6 +27,7 @@ const App: React.FC = () => {
     try {
       const newGameState = await apiService.createNewGame(playerName.trim());
       setGameState(newGameState);
+      setCurrentViewSectorId(newGameState.currentSectorId); // Initialize view with game's initial sector
       
       // Establish WebSocket connection
       const wsUrl = apiService.createWebSocketUrl(newGameState.id);
@@ -60,6 +62,7 @@ const App: React.FC = () => {
     setGameState(null);
     setEvents([]);
     setConnectionStatus('disconnected');
+    setCurrentViewSectorId(null);
   };
 
   useEffect(() => {
@@ -95,6 +98,10 @@ const App: React.FC = () => {
     
     console.log('Sending ship action:', message);
     wsService.sendMessage(message);
+  };
+
+  const handleSectorNavigation = (sectorId: string) => {
+    setCurrentViewSectorId(sectorId);
   };
 
   return (
@@ -157,12 +164,12 @@ const App: React.FC = () => {
               {gameState.sectors.map(sector => (
                 <button
                   key={sector.id}
-                  className={`button ${sector.id === gameState.currentSectorId ? 'active' : ''}`}
-                  disabled
+                  className={`button ${sector.id === (currentViewSectorId || gameState.currentSectorId) ? 'active' : ''}`}
+                  onClick={() => handleSectorNavigation(sector.id)}
                   style={{
-                    backgroundColor: sector.id === gameState.currentSectorId ? '#4a9eff' : '#666',
-                    color: sector.id === gameState.currentSectorId ? '#fff' : '#ccc',
-                    cursor: 'not-allowed'
+                    backgroundColor: sector.id === (currentViewSectorId || gameState.currentSectorId) ? '#4a9eff' : '#555',
+                    color: '#fff',
+                    cursor: 'pointer'
                   }}
                 >
                   {sector.name}
@@ -170,13 +177,15 @@ const App: React.FC = () => {
               ))}
             </div>
             <p style={{ fontSize: '14px', color: '#888' }}>
-              Current: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name} (Server-controlled)
+              Viewing: {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.name} | 
+              Ships in: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}
             </p>
           </div>
 
           <SectorMap 
             gameState={gameState} 
             selectedShipId={selectedShipId}
+            currentViewSectorId={currentViewSectorId || gameState.currentSectorId}
             onShipCommand={handleShipCommand}
           />
 

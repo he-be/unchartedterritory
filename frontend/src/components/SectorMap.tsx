@@ -4,15 +4,16 @@ import type { GameState, Station, Ship, Gate, Vector2 } from '../types';
 interface SectorMapProps {
   gameState: GameState;
   selectedShipId?: string | null;
+  currentViewSectorId: string;
   onShipCommand?: (shipId: string, targetPosition: Vector2) => void;
 }
 
-const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShipCommand }) => {
+const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, currentViewSectorId, onShipCommand }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredStation, setHoveredStation] = useState<Station | null>(null);
   const [mousePos, setMousePos] = useState<{ screen: Vector2; world: Vector2 } | null>(null);
   
-  const currentSector = gameState.sectors.find(s => s.id === gameState.currentSectorId);
+  const currentSector = gameState.sectors.find(s => s.id === currentViewSectorId);
 
   // Canvas dimensions and world coordinate system
   const CANVAS_WIDTH = 800;
@@ -121,8 +122,8 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
         ctx.fillText(`To ${gate.targetSectorId}`, screenX, screenY + 35);
       });
 
-      // Draw ships
-      const shipsInSector = gameState.player.ships.filter(ship => ship.sectorId === currentSector.id);
+      // Draw ships (only ships in the currently viewed sector)
+      const shipsInSector = gameState.player.ships.filter(ship => ship.sectorId === currentViewSectorId);
       shipsInSector.forEach(ship => {
         const isSelected = ship.id === selectedShipId;
         const { x: screenX, y: screenY } = worldToScreen(ship.position.x, ship.position.y);
@@ -143,7 +144,7 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
     render();
     const interval = setInterval(render, 100);
     return () => clearInterval(interval);
-  }, [currentSector, gameState, selectedShipId, hoveredStation, worldToScreen]);
+  }, [currentSector, gameState, selectedShipId, hoveredStation, worldToScreen, currentViewSectorId]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     console.log('Canvas clicked', { selectedShipId, onShipCommand });
@@ -154,6 +155,13 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
         hasShip: !!selectedShipId, 
         hasCommand: !!onShipCommand 
       });
+      return;
+    }
+
+    // Check if selected ship is in the currently viewed sector
+    const selectedShip = gameState.player.ships.find(s => s.id === selectedShipId);
+    if (!selectedShip || selectedShip.sectorId !== currentViewSectorId) {
+      console.log('Selected ship is not in the current sector, ignoring click');
       return;
     }
 
