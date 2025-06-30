@@ -118,9 +118,8 @@ export class GameSession implements DurableObject {
       }
 
       const data = JSON.parse(message as string) as WebSocketMessage;
-      console.log('Received WebSocket message:', data.type, data);
+      // WebSocket message processing (verbose logging disabled)
       const response = await this.processMessage(data);
-      console.log('Response:', response);
       
       if (response) {
         ws.send(JSON.stringify(response));
@@ -763,13 +762,12 @@ export class GameSession implements DurableObject {
     
     if (nearbyGate) {
       // Auto-activate gate when arriving at it
-      console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
-      console.log(`Current command queue length: ${ship.commandQueue.length}`);
+      // Ship arrived at gate - auto-activating
       await this.processGateUsage(ship, nearbyGate);
       
       // After gate usage, clear current command
       if (ship.currentCommand) {
-        console.log(`Completed command: ${ship.currentCommand.type}`);
+        // Command completed
         ship.currentCommand = undefined;
       }
       
