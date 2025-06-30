@@ -45,8 +45,17 @@ jobs:
           echo "✅ Playwright browsers found in local cache"
         else
           echo "browsers-exist=false" >> $GITHUB_OUTPUT
-          echo "❌ Playwright browsers not found, will install"
+          echo "❌ Playwright browsers not found, will check GitHub Actions cache"
         fi
+        
+    - name: Restore Playwright browsers from GitHub Actions cache (if needed)
+      if: steps.check-browsers.outputs.browsers-exist == 'false'
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          playwright-browsers-
         
     - name: Install backend dependencies
       working-directory: ./backend
@@ -56,12 +65,33 @@ jobs:
       working-directory: ./frontend
       run: npm ci --prefer-offline
       
-    - name: Install Playwright Browsers (conditional)
+    - name: Check if browsers exist after cache restore
+      id: check-browsers-after-cache
       if: steps.check-browsers.outputs.browsers-exist == 'false'
       run: |
-        echo "Installing Playwright browsers..."
-        npx playwright install --with-deps chromium
+        if [ -d ~/.cache/ms-playwright ] && [ "$(ls -A ~/.cache/ms-playwright)" ]; then
+          echo "browsers-exist-after-cache=true" >> $GITHUB_OUTPUT
+          echo "✅ Playwright browsers restored from GitHub Actions cache"
+        else
+          echo "browsers-exist-after-cache=false" >> $GITHUB_OUTPUT
+          echo "❌ No browsers in cache, will install fresh"
+        fi
+        
+    - name: Install Playwright Browsers (fresh install)
+      if: steps.check-browsers.outputs.browsers-exist == 'false' && steps.check-browsers-after-cache.outputs.browsers-exist-after-cache == 'false'
+      run: |
+        echo "Installing Playwright browsers from scratch..."
+        # NOTE: Do NOT use --with-deps flag as it requires sudo privileges
+        # and cannot run unattended in CI environments
+        npx playwright install chromium
         echo "✅ Playwright browsers installed successfully"
+        
+    - name: Save Playwright browsers to GitHub Actions cache (if installed)
+      if: steps.check-browsers.outputs.browsers-exist == 'false' && steps.check-browsers-after-cache.outputs.browsers-exist-after-cache == 'false'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-browsers-${{ hashFiles('frontend/package-lock.json') }}
       
     - name: Start backend server
       working-directory: ./backend
