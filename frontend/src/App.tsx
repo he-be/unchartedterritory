@@ -35,7 +35,7 @@ const App: React.FC = () => {
       
       ws.setOnStatusChange(setConnectionStatus);
       ws.setOnGameStateUpdate((newGameState) => {
-        console.log('Received game state update:', newGameState);
+        // Game state updated (verbose logging disabled)
         setGameState(newGameState);
         setError(null); // Clear any errors when we receive game state
       });
@@ -97,7 +97,7 @@ const App: React.FC = () => {
       targetSectorId: targetSectorId || currentViewSectorId || gameState?.currentSectorId
     };
     
-    console.log('Sending ship action:', message);
+    // Sending ship action (verbose logging disabled)
     wsService.sendMessage(message);
   };
 

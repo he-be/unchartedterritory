@@ -147,14 +147,9 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, curren
   }, [currentSector, gameState, selectedShipId, hoveredStation, worldToScreen, currentViewSectorId]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    console.log('Canvas clicked', { selectedShipId, onShipCommand });
+    // Canvas clicked (verbose logging disabled)
     if (!canvasRef.current || !currentSector || !selectedShipId || !onShipCommand) {
-      console.log('Click ignored:', { 
-        hasCanvas: !!canvasRef.current, 
-        hasSector: !!currentSector, 
-        hasShip: !!selectedShipId, 
-        hasCommand: !!onShipCommand 
-      });
+      // Click ignored - missing required conditions
       return;
     }
 
@@ -163,7 +158,7 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, curren
 
     const { x: screenX, y: screenY } = getCanvasMousePos(e);
     const { x: worldX, y: worldY } = screenToWorld(screenX, screenY);
-    console.log('Click position:', { screenX, screenY, worldX, worldY });
+    // Click position processed
 
     // Send the click position and target sector to backend for cross-sector movement
     onShipCommand(selectedShipId, { x: worldX, y: worldY }, currentViewSectorId);
