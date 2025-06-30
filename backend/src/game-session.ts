@@ -13,7 +13,7 @@ import type {
 } from './types';
 
 // Game loop configuration
-const TICK_RATE_HZ = 10;
+const TICK_RATE_HZ = 30;
 const TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ;
 
 export class GameSession implements DurableObject {
