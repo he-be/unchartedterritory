@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('UI Layout and Design', () => {
   test('should display terminal-style 3-pane layout', async ({ page }) => {
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     
     // Create game to see main layout
     await page.fill('input[placeholder="Enter your player name"]', 'UITest');
@@ -38,7 +38,7 @@ test.describe('UI Layout and Design', () => {
   });
 
   test('should display ship list in left pane with proper styling', async ({ page }) => {
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'ShipTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -65,7 +65,7 @@ test.describe('UI Layout and Design', () => {
   });
 
   test('should display map in center pane with sector buttons', async ({ page }) => {
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'MapTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -95,7 +95,7 @@ test.describe('UI Layout and Design', () => {
   });
 
   test('should display stations in right pane', async ({ page }) => {
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'StationTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -121,7 +121,7 @@ test.describe('UI Layout and Design', () => {
   });
 
   test('should use terminal-style colors and fonts', async ({ page }) => {
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     
     // Check body has monospace font
     await expect(page.locator('body')).toHaveCSS('font-family', /mono/i);
@@ -149,7 +149,7 @@ test.describe('UI Layout and Design', () => {
   test('should be responsive and fill viewport', async ({ page }) => {
     // Test at different viewport sizes
     await page.setViewportSize({ width: 1200, height: 800 });
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     
     // Container should fill viewport height - check that it has the height style
     const container = page.locator('.container');

@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Sector Navigation', () => {
   test('should allow ship to use gate for sector navigation', async ({ page }) => {
     // Create game first
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'GateTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -40,7 +40,7 @@ test.describe('Sector Navigation', () => {
 
   test('should move ship to gate and auto-jump when close enough', async ({ page }) => {
     // Create game
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'AutoJumpTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -65,7 +65,7 @@ test.describe('Sector Navigation', () => {
 
   test('should handle sector navigation buttons properly', async ({ page }) => {
     // Create game
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'NavTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
@@ -92,7 +92,7 @@ test.describe('Sector Navigation', () => {
 
   test('should handle multi-hop pathfinding (Three\'s Company to Elena\'s Fortune)', async ({ page }) => {
     // Create game
-    await page.goto('http://localhost:43619/');
+    await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'PathfindingTest');
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
