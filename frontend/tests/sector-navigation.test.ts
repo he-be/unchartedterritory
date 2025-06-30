@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Sector Navigation', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:39173/');
+    await page.goto('http://localhost:8787/');
   });
 
   test('should allow ship to use gate for sector navigation', async ({ page }) => {

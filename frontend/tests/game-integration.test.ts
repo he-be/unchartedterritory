@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Uncharted Territory Game', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:39173/');
+    await page.goto('http://localhost:8787/');
   });
 
   test('should create a new game and display game state', async ({ page }) => {

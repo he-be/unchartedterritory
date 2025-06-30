@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Command Queue Display', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:39173/');
+    await page.goto('http://localhost:8787/');
   });
 
   test('should display command queue when ship has pending commands', async ({ page }) => {

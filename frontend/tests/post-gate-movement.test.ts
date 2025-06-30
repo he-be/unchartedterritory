@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Post-Gate Movement', () => {
   test('should continue moving to final destination after gate jump', async ({ page }) => {
-    await page.goto('http://localhost:39173/');
+    await page.goto('http://localhost:8787/');
     
     // Create game
     await page.fill('input[placeholder="Enter your player name"]', 'PostGateTest');
