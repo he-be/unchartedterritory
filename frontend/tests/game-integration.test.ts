@@ -45,8 +45,8 @@ test.describe('Uncharted Territory Game', () => {
     await expect(shipInfo).toHaveCSS('border-color', 'rgb(74, 158, 255)');
     
     // Get initial ship position and status
-    const initialPosition = await shipInfo.locator('text=/Position:.*/')first().textContent();
-    const initialStatus = await shipInfo.locator('text=/Status:.*/')first().textContent();
+    const initialPosition = await shipInfo.locator('text=/Position:.*/').first().textContent();
+    const initialStatus = await shipInfo.locator('text=/Status:.*/').first().textContent();
     
     // Click on the map canvas to move the ship
     const canvas = page.locator('canvas');
@@ -59,7 +59,7 @@ test.describe('Uncharted Territory Game', () => {
     await expect(shipInfo.locator('text=Status: Idle')).toBeVisible({ timeout: 15000 });
     
     // Verify ship position has changed
-    const finalPosition = await shipInfo.locator('text=/Position:.*/')first().textContent();
+    const finalPosition = await shipInfo.locator('text=/Position:.*/').first().textContent();
     expect(finalPosition).not.toBe(initialPosition);
   });
 
