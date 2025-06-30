@@ -4,6 +4,17 @@ export interface Vector2 {
   y: number;
 }
 
+export interface ShipQueueCommand {
+  id: string;
+  type: 'move_to_position' | 'move_to_gate' | 'dock_at_station';
+  targetPosition: Vector2;
+  targetSectorId?: string;
+  targetGateId?: string;
+  targetGateSectorId?: string;
+  stationId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Ship {
   id: string;
   name: string;
@@ -13,6 +24,8 @@ export interface Ship {
   isMoving: boolean;
   cargo: ShipCargo[];
   maxCargo: number;
+  commandQueue: ShipQueueCommand[];
+  currentCommand?: ShipQueueCommand;
 }
 
 export interface ShipCargo {
@@ -68,7 +81,7 @@ export interface GameState {
 export interface GameEvent {
   id: string;
   timestamp: number;
-  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command';
+  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command' | 'sector_changed';
   message: string;
   data?: Record<string, unknown>;
 }

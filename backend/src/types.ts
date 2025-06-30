@@ -13,6 +13,8 @@ export interface Ship {
   isMoving: boolean;
   cargo: ShipCargo[];
   maxCargo: number;
+  commandQueue: ShipQueueCommand[]; // Queue of commands to execute
+  currentCommand?: ShipQueueCommand; // Currently executing command
 }
 
 export interface ShipCargo {
@@ -68,16 +70,18 @@ export interface GameState {
 export interface GameEvent {
   id: string;
   timestamp: number;
-  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command';
+  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command' | 'sector_changed';
   message: string;
   data?: Record<string, unknown>;
 }
 
 // WebSocket Message Types
 export interface WebSocketMessage {
-  type: 'shipCommand' | 'trade' | 'ping' | 'requestState';
+  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState';
   shipId?: string;
   command?: ShipCommand;
+  targetPosition?: Vector2;
+  targetSectorId?: string;
   tradeData?: TradeData;
   data?: Record<string, unknown>;
 }
@@ -95,7 +99,17 @@ export interface ShipCommand {
   type: 'move' | 'dock_at_station' | 'auto_move';
   targetPosition?: Vector2;
   stationId?: string;
+}
+
+export interface ShipQueueCommand {
+  id: string;
+  type: 'move_to_position' | 'move_to_gate' | 'dock_at_station';
+  targetPosition: Vector2;
   targetSectorId?: string;
+  targetGateId?: string;
+  targetGateSectorId?: string;
+  stationId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TradeData {

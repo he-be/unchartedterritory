@@ -4,15 +4,16 @@ import type { GameState, Station, Ship, Gate, Vector2 } from '../types';
 interface SectorMapProps {
   gameState: GameState;
   selectedShipId?: string | null;
-  onShipCommand?: (shipId: string, targetPosition: Vector2, targetId?: string) => void;
+  currentViewSectorId: string;
+  onShipCommand?: (shipId: string, targetPosition: Vector2, targetSectorId?: string) => void;
 }
 
-const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShipCommand }) => {
+const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, currentViewSectorId, onShipCommand }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredStation, setHoveredStation] = useState<Station | null>(null);
   const [mousePos, setMousePos] = useState<{ screen: Vector2; world: Vector2 } | null>(null);
   
-  const currentSector = gameState.sectors.find(s => s.id === gameState.currentSectorId);
+  const currentSector = gameState.sectors.find(s => s.id === currentViewSectorId);
 
   // Canvas dimensions and world coordinate system
   const CANVAS_WIDTH = 800;
@@ -121,8 +122,8 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
         ctx.fillText(`To ${gate.targetSectorId}`, screenX, screenY + 35);
       });
 
-      // Draw ships
-      const shipsInSector = gameState.player.ships.filter(ship => ship.sectorId === currentSector.id);
+      // Draw ships (only ships in the currently viewed sector)
+      const shipsInSector = gameState.player.ships.filter(ship => ship.sectorId === currentViewSectorId);
       shipsInSector.forEach(ship => {
         const isSelected = ship.id === selectedShipId;
         const { x: screenX, y: screenY } = worldToScreen(ship.position.x, ship.position.y);
@@ -143,51 +144,24 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, onShip
     render();
     const interval = setInterval(render, 100);
     return () => clearInterval(interval);
-  }, [currentSector, gameState, selectedShipId, hoveredStation, worldToScreen]);
+  }, [currentSector, gameState, selectedShipId, hoveredStation, worldToScreen, currentViewSectorId]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    console.log('Canvas clicked', { selectedShipId, onShipCommand });
+    // Canvas clicked (verbose logging disabled)
     if (!canvasRef.current || !currentSector || !selectedShipId || !onShipCommand) {
-      console.log('Click ignored:', { 
-        hasCanvas: !!canvasRef.current, 
-        hasSector: !!currentSector, 
-        hasShip: !!selectedShipId, 
-        hasCommand: !!onShipCommand 
-      });
+      // Click ignored - missing required conditions
       return;
     }
 
+    // Allow commands to ships regardless of which sector is being viewed
+    // This enables cross-sector ship movement (e.g., ship auto-traveling to viewed sector)
+
     const { x: screenX, y: screenY } = getCanvasMousePos(e);
     const { x: worldX, y: worldY } = screenToWorld(screenX, screenY);
-    console.log('Click position:', { screenX, screenY, worldX, worldY });
+    // Click position processed
 
-    // Check if clicked on a station
-    const clickedStation = currentSector.stations.find(station => {
-      const screen = worldToScreen(station.position.x, station.position.y);
-      const dx = screenX - screen.x;
-      const dy = screenY - screen.y;
-      return Math.sqrt(dx * dx + dy * dy) < 20;
-    });
-
-    // Check if clicked on a gate
-    const clickedGate = currentSector.gates.find(gate => {
-      const screen = worldToScreen(gate.position.x, gate.position.y);
-      const dx = screenX - screen.x;
-      const dy = screenY - screen.y;
-      return Math.sqrt(dx * dx + dy * dy) < 25;
-    });
-
-    if (clickedStation) {
-      console.log('Moving to station:', clickedStation.name);
-      onShipCommand(selectedShipId, clickedStation.position, clickedStation.id);
-    } else if (clickedGate) {
-      console.log('Moving to gate:', clickedGate.id);
-      onShipCommand(selectedShipId, clickedGate.position, clickedGate.id);
-    } else {
-      // Move to empty space
-      console.log('Moving to empty space:', { x: worldX, y: worldY });
-      onShipCommand(selectedShipId, { x: worldX, y: worldY });
-    }
+    // Send the click position and target sector to backend for cross-sector movement
+    onShipCommand(selectedShipId, { x: worldX, y: worldY }, currentViewSectorId);
   };
 
   const handleCanvasHover = (e: React.MouseEvent<HTMLCanvasElement>) => {

@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
+  const [currentViewSectorId, setCurrentViewSectorId] = useState<string | null>(null);
 
   const handleCreateGame = async () => {
     if (!playerName.trim()) {
@@ -26,6 +27,7 @@ const App: React.FC = () => {
     try {
       const newGameState = await apiService.createNewGame(playerName.trim());
       setGameState(newGameState);
+      setCurrentViewSectorId(newGameState.currentSectorId); // Initialize view with game's initial sector
       
       // Establish WebSocket connection
       const wsUrl = apiService.createWebSocketUrl(newGameState.id);
@@ -33,7 +35,7 @@ const App: React.FC = () => {
       
       ws.setOnStatusChange(setConnectionStatus);
       ws.setOnGameStateUpdate((newGameState) => {
-        console.log('Received game state update:', newGameState);
+        // Game state updated (verbose logging disabled)
         setGameState(newGameState);
         setError(null); // Clear any errors when we receive game state
       });
@@ -60,6 +62,7 @@ const App: React.FC = () => {
     setGameState(null);
     setEvents([]);
     setConnectionStatus('disconnected');
+    setCurrentViewSectorId(null);
   };
 
   useEffect(() => {
@@ -80,24 +83,26 @@ const App: React.FC = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  const handleShipCommand = (shipId: string, targetPosition: Vector2, targetId?: string) => {
+  const handleShipCommand = (shipId: string, targetPosition: Vector2, targetSectorId?: string) => {
     if (!wsService) {
       console.error('WebSocket service not available');
       return;
     }
     
-    const command = {
-      type: 'shipCommand' as const,
+    // Send abstract command - backend determines specific action based on world context
+    const message = {
+      type: 'shipAction' as const,
       shipId,
-      command: {
-        type: (targetId ? 'dock_at_station' : 'move') as const,
-        targetPosition,
-        stationId: targetId
-      }
+      targetPosition,
+      targetSectorId: targetSectorId || currentViewSectorId || gameState?.currentSectorId
     };
     
-    console.log('Sending ship command:', command);
-    wsService.sendMessage(command);
+    // Sending ship action (verbose logging disabled)
+    wsService.sendMessage(message);
+  };
+
+  const handleSectorNavigation = (sectorId: string) => {
+    setCurrentViewSectorId(sectorId);
   };
 
   return (
@@ -154,9 +159,34 @@ const App: React.FC = () => {
             </p>
           </div>
 
+          <div className="card">
+            <h3>Sector Navigation</h3>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {gameState.sectors.map(sector => (
+                <button
+                  key={sector.id}
+                  className={`button ${sector.id === (currentViewSectorId || gameState.currentSectorId) ? 'active' : ''}`}
+                  onClick={() => handleSectorNavigation(sector.id)}
+                  style={{
+                    backgroundColor: sector.id === (currentViewSectorId || gameState.currentSectorId) ? '#4a9eff' : '#555',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {sector.name}
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: '14px', color: '#888' }}>
+              Viewing: {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.name} | 
+              Ships in: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}
+            </p>
+          </div>
+
           <SectorMap 
             gameState={gameState} 
             selectedShipId={selectedShipId}
+            currentViewSectorId={currentViewSectorId || gameState.currentSectorId}
             onShipCommand={handleShipCommand}
           />
 
@@ -176,10 +206,32 @@ const App: React.FC = () => {
                 }}
               >
                 <h4>{ship.name}</h4>
-                <p><strong>Position:</strong> ({ship.position.x}, {ship.position.y})</p>
+                <p><strong>Position:</strong> ({Math.round(ship.position.x)}, {Math.round(ship.position.y)})</p>
                 <p><strong>Sector:</strong> {ship.sectorId}</p>
                 <p><strong>Status:</strong> {ship.isMoving ? 'Moving' : 'Idle'}</p>
                 <p><strong>Cargo:</strong> {ship.cargo.length}/{ship.maxCargo}</p>
+                {ship.commandQueue && ship.commandQueue.length > 0 && (
+                  <div style={{ marginTop: '10px', padding: '5px', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
+                    <p><strong>Command Queue ({ship.commandQueue.length}):</strong></p>
+                    {ship.currentCommand && (
+                      <p style={{ color: '#4a9eff', fontSize: '12px' }}>
+                        ▶ Current: {ship.currentCommand.type}
+                        {ship.currentCommand.targetSectorId && ` → ${ship.currentCommand.targetSectorId}`}
+                      </p>
+                    )}
+                    {ship.commandQueue.slice(0, 3).map((cmd, index) => (
+                      <p key={cmd.id} style={{ fontSize: '12px', marginLeft: '10px', color: '#888' }}>
+                        {index + 1}. {cmd.type}
+                        {cmd.targetSectorId && ` → ${cmd.targetSectorId}`}
+                      </p>
+                    ))}
+                    {ship.commandQueue.length > 3 && (
+                      <p style={{ fontSize: '12px', marginLeft: '10px', color: '#666' }}>
+                        ... and {ship.commandQueue.length - 3} more
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

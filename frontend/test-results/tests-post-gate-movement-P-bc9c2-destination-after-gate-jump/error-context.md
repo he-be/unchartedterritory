@@ -1,0 +1,80 @@
+# Page snapshot
+
+```yaml
+- heading "Uncharted Territory" [level=1]
+- heading "Game Status" [level=2]
+- button "Leave Game"
+- paragraph:
+  - strong: "Player:"
+  - text: PostGateTest
+- paragraph:
+  - strong: "Credits:"
+  - text: 10,000
+- paragraph:
+  - strong: "Game Time:"
+  - text: 0h 0m
+- paragraph:
+  - strong: "Current Sector:"
+  - text: Argon Prime
+- paragraph:
+  - strong: "Connection:"
+  - text: CONNECTED
+- heading "Sector Navigation" [level=3]
+- button "Argon Prime"
+- button "Three's Company"
+- button "Elena's Fortune"
+- paragraph: "Viewing: Three's Company | Ships in: Argon Prime"
+- 'heading "Sector Map: Three''s Company" [level=3]'
+- heading "Ships (1)" [level=3]
+- heading "Discovery" [level=4]
+- paragraph:
+  - strong: "Position:"
+  - text: (387, 2)
+- paragraph:
+  - strong: "Sector:"
+  - text: argon-prime
+- paragraph:
+  - strong: "Status:"
+  - text: Moving
+- paragraph:
+  - strong: "Cargo:"
+  - text: 0/100
+- paragraph:
+  - strong: "Command Queue (2):"
+- paragraph: "▶ Current: move_to_gate → argon-prime"
+- paragraph: 1. use_gate → threes-company
+- paragraph: 2. move_to_position → threes-company
+- heading "Sectors (3)" [level=3]
+- heading "Argon Prime" [level=4]
+- paragraph:
+  - strong: "Coordinates:"
+  - text: (0, 0)
+- paragraph:
+  - strong: "Stations:"
+  - text: "2"
+- paragraph:
+  - strong: "Gates:"
+  - text: "2"
+- heading "Three's Company" [level=4]
+- paragraph:
+  - strong: "Coordinates:"
+  - text: (1, 0)
+- paragraph:
+  - strong: "Stations:"
+  - text: "1"
+- paragraph:
+  - strong: "Gates:"
+  - text: "1"
+- heading "Elena's Fortune" [level=4]
+- paragraph:
+  - strong: "Coordinates:"
+  - text: (-1, 0)
+- paragraph:
+  - strong: "Stations:"
+  - text: "1"
+- paragraph:
+  - strong: "Gates:"
+  - text: "1"
+- heading "Recent Events" [level=3]
+- text: "[9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime! [9:00:00 AM] Discovery is moving to gate gate-to-threes-company [9:00:00 AM] Welcome to Argon Prime!"
+```

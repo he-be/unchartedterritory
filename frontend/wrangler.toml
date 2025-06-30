@@ -17,6 +17,7 @@ not_found_handling = "single-page-application"
 binding = "BACKEND"
 service = "unchartedterritory-backend"
 
+
 [env.staging]
 name = "unchartedterritory-frontend-staging"
 
