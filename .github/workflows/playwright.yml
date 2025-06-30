@@ -37,13 +37,16 @@ jobs:
         restore-keys: |
           frontend-deps-
           
-    - name: Cache Playwright browsers
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-browsers-${{ hashFiles('frontend/package-lock.json') }}
-        restore-keys: |
-          playwright-browsers-
+    - name: Check if Playwright browsers exist locally
+      id: check-browsers
+      run: |
+        if [ -d ~/.cache/ms-playwright ] && [ "$(ls -A ~/.cache/ms-playwright)" ]; then
+          echo "browsers-exist=true" >> $GITHUB_OUTPUT
+          echo "✅ Playwright browsers found in local cache"
+        else
+          echo "browsers-exist=false" >> $GITHUB_OUTPUT
+          echo "❌ Playwright browsers not found, will install"
+        fi
         
     - name: Install backend dependencies
       working-directory: ./backend
@@ -53,8 +56,12 @@ jobs:
       working-directory: ./frontend
       run: npm ci --prefer-offline
       
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium
+    - name: Install Playwright Browsers (conditional)
+      if: steps.check-browsers.outputs.browsers-exist == 'false'
+      run: |
+        echo "Installing Playwright browsers..."
+        npx playwright install --with-deps chromium
+        echo "✅ Playwright browsers installed successfully"
       
     - name: Start backend server
       working-directory: ./backend
