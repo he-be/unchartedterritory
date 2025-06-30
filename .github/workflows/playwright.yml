@@ -65,6 +65,10 @@ jobs:
       working-directory: ./frontend
       run: npm ci --prefer-offline
       
+    - name: Build frontend assets
+      working-directory: ./frontend
+      run: npm run build:assets
+      
     - name: Check if browsers exist after cache restore
       id: check-browsers-after-cache
       if: steps.check-browsers.outputs.browsers-exist == 'false'
@@ -96,14 +100,84 @@ jobs:
     - name: Start backend server
       working-directory: ./backend
       run: |
-        npx wrangler dev --local --port 8788 &
+        npx wrangler dev --port 8788 &
         sleep 10
         
-    - name: Start frontend server
-      working-directory: ./frontend
+    - name: Start simple HTTP proxy for frontend
       run: |
-        npx wrangler dev --local --port 8787 &
-        sleep 10
+        # Create a simple proxy server that forwards API calls to backend
+        cat > proxy-server.js << 'EOF'
+        const http = require('http');
+        const httpProxy = require('http-proxy');
+        const fs = require('fs');
+        const path = require('path');
+        
+        const proxy = httpProxy.createProxyServer({});
+        
+        const server = http.createServer((req, res) => {
+          // Add CORS headers
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          
+          if (req.method === 'OPTIONS') {
+            res.writeHead(200);
+            res.end();
+            return;
+          }
+          
+          // Proxy API requests to backend
+          if (req.url.startsWith('/api/')) {
+            proxy.web(req, res, { target: 'http://localhost:8788' });
+          } else {
+            // Serve static files
+            const filePath = path.join(__dirname, 'frontend/dist/assets', req.url === '/' ? 'index.html' : req.url);
+            if (fs.existsSync(filePath)) {
+              const content = fs.readFileSync(filePath);
+              const ext = path.extname(filePath);
+              const contentType = {
+                '.html': 'text/html',
+                '.js': 'application/javascript',
+                '.css': 'text/css',
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.svg': 'image/svg+xml'
+              }[ext] || 'text/plain';
+              
+              res.setHeader('Content-Type', contentType);
+              res.writeHead(200);
+              res.end(content);
+            } else {
+              // Fallback to index.html for SPA routing
+              const indexPath = path.join(__dirname, 'frontend/dist/assets/index.html');
+              if (fs.existsSync(indexPath)) {
+                const content = fs.readFileSync(indexPath);
+                res.setHeader('Content-Type', 'text/html');
+                res.writeHead(200);
+                res.end(content);
+              } else {
+                res.writeHead(404);
+                res.end('Not Found');
+              }
+            }
+          }
+        });
+        
+        // Handle WebSocket upgrades
+        server.on('upgrade', (req, socket, head) => {
+          if (req.url.startsWith('/api/')) {
+            proxy.ws(req, socket, head, { target: 'http://localhost:8788' });
+          }
+        });
+        
+        server.listen(8787, () => {
+          console.log('Proxy server running on port 8787');
+        });
+        EOF
+        
+        npm install http-proxy
+        node proxy-server.js &
+        sleep 5
         
     - name: Run Playwright tests
       working-directory: ./frontend

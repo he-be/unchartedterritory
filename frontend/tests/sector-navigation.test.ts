@@ -43,21 +43,17 @@ test.describe('Sector Navigation', () => {
     // Now click on the gate itself to use it
     await canvas.click({ position: { x: 640, y: 300 } });
     
-    // Wait for ship to reach gate and auto-jump
-    await page.waitForTimeout(5000);
+    // Wait for ship to start moving toward gate
+    await expect(shipInfo.locator('text=Status: Moving')).toBeVisible({ timeout: 5000 });
     
-    // Check that sector changed
-    const gateMovement = consoleMessages.some(msg => msg.includes('Sending ship action'));
-    const gateUsed = consoleMessages.some(msg => msg.includes('has jumped to'));
-    const sectorChanged = consoleMessages.some(msg => msg.includes('currentSectorId: threes-company'));
-    const errorMessages = consoleMessages.filter(msg => msg.includes('error') || msg.includes('Error') || msg.includes('too far') || msg.includes('WebSocket error'));
+    // Wait for gate jump to complete - ship should be in new sector
+    await expect(page.locator('text=Current Sector: Three\'s Company')).toBeVisible({ timeout: 15000 });
     
-    console.log('Gate movement command sent:', gateMovement);
-    console.log('Gate jump detected:', gateUsed); 
-    console.log('Sector change detected:', sectorChanged);
-    console.log('Error messages found:', errorMessages);
+    // Verify ship is now in the new sector
+    await expect(shipInfo.locator('text=Sector: threes-company')).toBeVisible();
     
-    expect(gateMovement).toBe(true);
+    // Verify ship status is idle after completing movement
+    await expect(shipInfo.locator('text=Status: Idle')).toBeVisible({ timeout: 5000 });
     
     // If there were errors, log them but don't fail the test yet
     if (errorMessages.length > 0) {

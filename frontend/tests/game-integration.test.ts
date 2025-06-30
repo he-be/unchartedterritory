@@ -44,29 +44,23 @@ test.describe('Uncharted Territory Game', () => {
     // Verify ship is selected (should have blue border)
     await expect(shipInfo).toHaveCSS('border-color', 'rgb(74, 158, 255)');
     
-    // Listen for console messages to verify command is sent
-    const consoleMessages: string[] = [];
-    page.on('console', msg => {
-      const text = msg.text();
-      consoleMessages.push(text);
-      console.log('BROWSER:', text);
-    });
+    // Get initial ship position and status
+    const initialPosition = await shipInfo.locator('text=/Position:.*/')first().textContent();
+    const initialStatus = await shipInfo.locator('text=/Status:.*/')first().textContent();
     
     // Click on the map canvas to move the ship
     const canvas = page.locator('canvas');
     await canvas.click({ position: { x: 600, y: 200 } });
     
-    // Wait for command processing
-    await page.waitForTimeout(2000);
+    // Wait for ship to start moving (status should change to "Moving")
+    await expect(shipInfo.locator('text=Status: Moving')).toBeVisible({ timeout: 5000 });
     
-    // Verify command was sent and processed
-    const commandSent = consoleMessages.some(msg => msg.includes('Sending ship action'));
-    const commandExecuted = consoleMessages.some(msg => msg.includes('Command result') || msg.includes('Moving to position'));
-    const stateUpdates = consoleMessages.filter(msg => msg.includes('Received game state update')).length;
+    // Wait for ship movement to complete
+    await expect(shipInfo.locator('text=Status: Idle')).toBeVisible({ timeout: 15000 });
     
-    expect(commandSent).toBe(true);
-    expect(commandExecuted).toBe(true);
-    expect(stateUpdates).toBeGreaterThan(10); // Should receive multiple state updates
+    // Verify ship position has changed
+    const finalPosition = await shipInfo.locator('text=/Position:.*/')first().textContent();
+    expect(finalPosition).not.toBe(initialPosition);
   });
 
   test('should handle WebSocket connection properly', async ({ page }) => {
