@@ -189,7 +189,7 @@ export class GameSession implements DurableObject {
   private async updateGameLogic(): Promise<void> {
     if (!this.gameState) return;
 
-    const SHIP_SPEED = 20; // Units per second (reduced for more visible movement)
+    const SHIP_SPEED = 60; // Units per second (3x speed for faster movement)
     const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
 
     // Update ship positions and process commands
