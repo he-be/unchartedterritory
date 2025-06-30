@@ -436,22 +436,14 @@ export class GameSession implements DurableObject {
           const gate = sector?.gates.find(g => g.targetSectorId === nextSectorId);
           
           if (gate) {
-            // Add command to move to gate
+            // Add command to move to gate (will auto-jump when reached)
             commands.push({
               id: crypto.randomUUID(),
               type: 'move_to_gate',
               targetPosition: gate.position,
               targetSectorId: currentSectorId,
-              gateId: gate.id
-            });
-            
-            // Add command to use gate
-            commands.push({
-              id: crypto.randomUUID(),
-              type: 'use_gate',
-              targetPosition: gate.position,
-              targetSectorId: nextSectorId,
-              gateId: gate.id
+              targetGateId: gate.id,
+              targetGateSectorId: nextSectorId
             });
           }
         }
@@ -512,31 +504,10 @@ export class GameSession implements DurableObject {
           id: crypto.randomUUID(),
           timestamp: this.gameState!.gameTime,
           type: 'ship_command',
-          message: `${ship.name} is moving to gate ${nextCommand.gateId}`,
+          message: `${ship.name} is moving to gate to ${nextCommand.targetGateSectorId}`,
         });
         break;
         
-      case 'use_gate': {
-        // Gate usage will be handled automatically when ship reaches gate position
-        // This command type is primarily for queue organization
-        const gate = this.gameState!.sectors
-          .find(s => s.id === ship.sectorId)?.gates
-          .find(g => g.id === nextCommand.gateId);
-        
-        if (gate) {
-          await this.processGateUsage(ship, gate);
-          // Clear current command after gate usage
-          ship.currentCommand = undefined;
-        }
-        
-        this.gameState!.events.push({
-          id: crypto.randomUUID(),
-          timestamp: this.gameState!.gameTime,
-          type: 'ship_command',
-          message: `${ship.name} used gate to ${nextCommand.targetSectorId}`,
-        });
-        break;
-      }
         
       case 'dock_at_station':
         ship.destination = { ...nextCommand.targetPosition };
@@ -791,7 +762,7 @@ export class GameSession implements DurableObject {
     });
     
     if (nearbyGate) {
-      // Auto-activate gate
+      // Auto-activate gate when arriving at it
       console.log(`Ship ${ship.name} arrived at gate ${nearbyGate.id}, auto-activating...`);
       console.log(`Current command queue length: ${ship.commandQueue.length}`);
       await this.processGateUsage(ship, nearbyGate);
@@ -801,6 +772,9 @@ export class GameSession implements DurableObject {
         console.log(`Completed command: ${ship.currentCommand.type}`);
         ship.currentCommand = undefined;
       }
+      
+      // Process next command in queue after gate arrival
+      await this.processShipCommandQueue(ship);
     } else {
       // Normal arrival - clear current command
       if (ship.currentCommand) {
@@ -813,6 +787,9 @@ export class GameSession implements DurableObject {
         type: 'ship_moved',
         message: `${ship.name} has reached its destination`,
       });
+      
+      // Process next command in queue after normal arrival
+      await this.processShipCommandQueue(ship);
     }
   }
 

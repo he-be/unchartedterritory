@@ -103,10 +103,11 @@ export interface ShipCommand {
 
 export interface ShipQueueCommand {
   id: string;
-  type: 'move_to_position' | 'move_to_gate' | 'use_gate' | 'dock_at_station';
+  type: 'move_to_position' | 'move_to_gate' | 'dock_at_station';
   targetPosition: Vector2;
   targetSectorId?: string;
-  gateId?: string;
+  targetGateId?: string;
+  targetGateSectorId?: string;
   stationId?: string;
   metadata?: Record<string, unknown>;
 }
