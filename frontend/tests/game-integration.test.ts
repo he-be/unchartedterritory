@@ -18,13 +18,13 @@ test.describe('Uncharted Territory Game', () => {
     // Verify game state
     await expect(page.locator('text=Player: TestPlayer')).toBeVisible();
     await expect(page.locator('text=Credits: 10,000')).toBeVisible();
-    await expect(page.locator('text=Connection: CONNECTED')).toBeVisible();
+    await expect(page.locator('.status.connected')).toBeVisible();
     
-    // Verify sectors are loaded
-    await expect(page.locator('text=Sectors (3)')).toBeVisible();
-    await expect(page.locator('h4:has-text("Argon Prime")')).toBeVisible();
-    await expect(page.locator('h4:has-text("Three\'s Company")')).toBeVisible();
-    await expect(page.locator('h4:has-text("Elena\'s Fortune")')).toBeVisible();
+    // Verify sectors are loaded (now in right pane)
+    await expect(page.locator('text=Sector Info')).toBeVisible();
+    await expect(page.locator('.right-pane .station-name:has-text("Argon Prime")')).toBeVisible();
+    await expect(page.locator('.right-pane .station-name:has-text("Three\'s Company")')).toBeVisible();
+    await expect(page.locator('.right-pane .station-name:has-text("Elena\'s Fortune")')).toBeVisible();
     
     // Verify ship exists
     await expect(page.locator('text=Ships (1)')).toBeVisible();
@@ -38,11 +38,11 @@ test.describe('Uncharted Territory Game', () => {
     await page.waitForSelector('text=Game Status');
     
     // Click on the ship to select it
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Verify ship is selected (should have blue border)
-    await expect(shipInfo).toHaveCSS('border-color', 'rgb(74, 158, 255)');
+    await expect(shipInfo).toHaveCSS('border-color', 'rgb(88, 166, 255)');
     
     // Click on the map canvas to move the ship
     const canvas = page.locator('canvas');
@@ -61,11 +61,10 @@ test.describe('Uncharted Territory Game', () => {
     await page.click('button:has-text("Create Game")');
     
     // Wait for WebSocket connection
-    await page.waitForSelector('text=CONNECTED');
+    await page.waitForSelector('.status.connected');
     
     // Verify connection status
-    const connectionStatus = page.locator('text=Connection:').locator('..');
-    await expect(connectionStatus).toContainText('CONNECTED');
+    await expect(page.locator('.status.connected')).toBeVisible();
   });
 
   test('should display map with stations and gates', async ({ page }) => {
@@ -78,9 +77,9 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();
     await expect(page.locator('canvas')).toBeVisible();
     
-    // Check sector information
-    await expect(page.locator('text=Stations: 2').first()).toBeVisible();
-    await expect(page.locator('text=Gates: 2').first()).toBeVisible();
+    // Check sector information (now in right pane)
+    await expect(page.locator('text=Stations: 2')).toBeVisible();
+    await expect(page.locator('text=Gates: 2')).toBeVisible();
   });
 
   test('should allow leaving and creating new game', async ({ page }) => {

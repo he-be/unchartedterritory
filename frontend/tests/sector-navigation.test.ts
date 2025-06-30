@@ -9,11 +9,11 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // Click on the ship to select it
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Verify ship is selected (should have blue border)
-    await expect(shipInfo).toHaveCSS('border-color', 'rgb(74, 158, 255)');
+    await expect(shipInfo).toHaveCSS('border-color', 'rgb(88, 166, 255)');
     
     // First, move the ship close to a gate
     const canvas = page.locator('canvas');
@@ -46,7 +46,7 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Click on gate - ship should move to gate and auto-jump
@@ -81,13 +81,13 @@ test.describe('Sector Navigation', () => {
     
     // Verify navigation works
     await threesCompanyButton.click();
-    await expect(page.locator('text=Viewing: Three\'s Company')).toBeVisible();
+    await expect(page.locator('text=Sector Map: Three\'s Company')).toBeVisible();
     
     // Current sector button should be active
-    await expect(threesCompanyButton).toHaveCSS('background-color', 'rgb(74, 158, 255)');
+    await expect(threesCompanyButton).toHaveCSS('background-color', 'rgb(65, 132, 230)');
     
     await elenaFortuneButton.click();
-    await expect(page.locator('text=Viewing: Elena\'s Fortune')).toBeVisible();
+    await expect(page.locator('text=Sector Map: Elena\'s Fortune')).toBeVisible();
   });
 
   test('should handle multi-hop pathfinding (Three\'s Company to Elena\'s Fortune)', async ({ page }) => {
@@ -98,12 +98,12 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // First move Discovery to Three's Company
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Switch to Three's Company view and move ship there
     await page.click('button:has-text("Three\'s Company")');
-    await page.waitForSelector('text=Viewing: Three\'s Company');
+    await page.waitForSelector('text=Sector Map: Three\'s Company');
     
     const canvas = page.locator('canvas');
     await canvas.click({ position: { x: 400, y: 300 } }); // Move to Three's Company
@@ -113,7 +113,7 @@ test.describe('Sector Navigation', () => {
     
     // Now test multi-hop: Three's Company -> Elena's Fortune (via Argon Prime)
     await page.click('button:has-text("Elena\'s Fortune")');
-    await page.waitForSelector('text=Viewing: Elena\'s Fortune');
+    await page.waitForSelector('text=Sector Map: Elena\'s Fortune');
     
     // Click somewhere in Elena's Fortune to trigger pathfinding
     await canvas.click({ position: { x: 300, y: 200 } });

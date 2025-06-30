@@ -12,12 +12,12 @@ test.describe('Command Queue Display', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Switch to Elena's Fortune view (requires multi-hop)
     await page.click('button:has-text("Elena\'s Fortune")');
-    await page.waitForSelector('text=Viewing: Elena\'s Fortune');
+    await page.waitForSelector('text=Sector Map: Elena\'s Fortune');
     
     // Click on Elena's Fortune map - should create multi-hop command queue
     const canvas = page.locator('canvas');
@@ -27,15 +27,15 @@ test.describe('Command Queue Display', () => {
     await page.waitForTimeout(1000);
     
     // Check for command queue display
-    const commandQueue = page.locator('text=Command Queue').first();
+    const commandQueue = page.locator('text=/Queue \\(\\d+\\):/').first();
     await expect(commandQueue).toBeVisible();
     
     // Check for specific command types
     const moveToGate = page.locator('text=/move_to_gate/').first();
     await expect(moveToGate).toBeVisible();
     
-    // Should show current command
-    const currentCommand = page.locator('text=/▶ Current:/').first();
+    // Should show current command (▶ symbol indicates current command)
+    const currentCommand = page.locator('text=/▶ /').first();
     await expect(currentCommand).toBeVisible();
   });
 
@@ -46,7 +46,7 @@ test.describe('Command Queue Display', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('div').filter({ hasText: /^Discovery/ }).first();
+    const shipInfo = page.locator('.ship-item').first();
     await shipInfo.click();
     
     // Move to a nearby gate first
