@@ -25,7 +25,19 @@ app.get('/health', (c) => {
 // Game API routes
 app.post('/api/game/new', async (c) => {
   try {
+    console.log('POST /api/game/new - Starting game creation');
+    
+    // Check if GAME_SESSION binding exists
+    if (!c.env.GAME_SESSION) {
+      console.error('GAME_SESSION binding not found');
+      return c.json({ 
+        error: 'Service unavailable - GAME_SESSION binding missing',
+        details: 'Durable Object binding not configured properly'
+      }, 503);
+    }
+    
     const gameId = crypto.randomUUID();
+    console.log(`Generated game ID: ${gameId}`);
     
     // Create new game session Durable Object
     const durableObjectId = c.env.GAME_SESSION.idFromName(gameId);
@@ -42,17 +54,29 @@ app.post('/api/game/new', async (c) => {
       body: c.req.raw.body
     });
     
+    console.log('Forwarding request to Durable Object');
     const response = await gameSession.fetch(newRequest);
     
     if (!response.ok) {
-      return c.json({ error: 'Failed to create game' }, 500);
+      const errorText = await response.text();
+      console.error(`Durable Object returned error: ${response.status} - ${errorText}`);
+      return c.json({ 
+        error: 'Failed to create game in Durable Object',
+        details: errorText,
+        status: response.status
+      }, 500);
     }
     
     const gameState = await response.json() as object;
+    console.log('Game created successfully');
     return c.json(gameState);
   } catch (error) {
     console.error('Error creating new game:', error);
-    return c.json({ error: 'Failed to create game' }, 500);
+    return c.json({ 
+      error: 'Failed to create game',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    }, 500);
   }
 });
 

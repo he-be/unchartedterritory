@@ -77,24 +77,47 @@ export class GameSession implements DurableObject {
   }
 
   private async handleNewGame(request: Request): Promise<Response> {
-    const body = await request.json() as { playerName: string };
-    
-    if (!body.playerName) {
-      return new Response('Player name required', { status: 400 });
+    try {
+      const body = await request.json() as { playerName: string };
+      
+      if (!body.playerName) {
+        return new Response(JSON.stringify({ error: 'Player name required' }), { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Get gameId from URL parameter
+      const url = new URL(request.url);
+      const gameId = url.searchParams.get('gameId');
+      
+      if (!gameId) {
+        return new Response(JSON.stringify({ error: 'Game ID required' }), { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log(`Creating new game with ID: ${gameId}, player: ${body.playerName}`);
+      
+      this.gameState = this.createInitialGameState(body.playerName, gameId);
+      await this.saveGameState();
+      
+      console.log(`Game created successfully: ${gameId}`);
+      
+      return new Response(JSON.stringify(this.gameState), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('Error in handleNewGame:', error);
+      return new Response(JSON.stringify({ 
+        error: 'Failed to create game',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
-
-    // Get gameId from URL parameter
-    const url = new URL(request.url);
-    const gameId = url.searchParams.get('gameId');
-    
-    if (!gameId) {
-      return new Response('Game ID required', { status: 400 });
-    }
-
-    this.gameState = this.createInitialGameState(body.playerName, gameId);
-    await this.saveGameState();
-
-    return Response.json(this.gameState);
   }
 
   private async handleGetState(): Promise<Response> {
