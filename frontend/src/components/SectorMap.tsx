@@ -185,17 +185,15 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, curren
   };
 
   if (!currentSector) {
-    return <div className="card">No sector data available</div>;
+    return <div>No sector data available</div>;
   }
 
   return (
-    <div className="card">
-      <h3>Sector Map: {currentSector.name}</h3>
+    <>
       <canvas
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        style={{ border: '1px solid #444', cursor: 'crosshair' }}
         onClick={handleCanvasClick}
         onMouseMove={handleCanvasHover}
       />
@@ -203,19 +201,21 @@ const SectorMap: React.FC<SectorMapProps> = ({ gameState, selectedShipId, curren
       {hoveredStation && (
         <div style={{
           position: 'absolute',
-          background: 'rgba(0,0,0,0.9)',
-          border: '1px solid #444',
-          padding: '10px',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-primary)',
+          padding: '8px',
           borderRadius: '4px',
           pointerEvents: 'none',
           left: (mousePos?.screen.x || 0) + 10,
-          top: (mousePos?.screen.y || 0) + 10
+          top: (mousePos?.screen.y || 0) + 10,
+          fontSize: '12px',
+          zIndex: 1000
         }}>
-          <h4 style={{ margin: 0, color: '#fff' }}>{hoveredStation.name}</h4>
-          <p style={{ margin: '5px 0', color: '#aaa' }}>Inventory: {hoveredStation.inventory.length} items</p>
+          <div style={{ margin: 0, color: 'var(--text-primary)', fontWeight: 600 }}>{hoveredStation.name}</div>
+          <div style={{ margin: '2px 0', color: 'var(--text-secondary)' }}>Inventory: {hoveredStation.inventory.length} items</div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

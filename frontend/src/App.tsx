@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from './services/api';
 import { WebSocketService } from './services/websocket';
-import type { GameState, GameEvent, ConnectionStatus, Vector2 } from './types';
+import type { GameState, ConnectionStatus, Vector2 } from './types';
 import SectorMap from './components/SectorMap';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [playerName, setPlayerName] = useState('');
-  const [events, setEvents] = useState<GameEvent[]>([]);
   const [wsService, setWsService] = useState<WebSocketService | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +38,6 @@ const App: React.FC = () => {
         setGameState(newGameState);
         setError(null); // Clear any errors when we receive game state
       });
-      ws.setOnEvents((newEvents) => {
-        setEvents(prev => [...prev, ...newEvents].slice(-50)); // Keep last 50 events
-      });
       ws.setOnError(setError);
       
       await ws.connect();
@@ -60,7 +56,6 @@ const App: React.FC = () => {
       setWsService(null);
     }
     setGameState(null);
-    setEvents([]);
     setConnectionStatus('disconnected');
     setCurrentViewSectorId(null);
   };
@@ -72,10 +67,6 @@ const App: React.FC = () => {
       }
     };
   }, [wsService]);
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
 
   const formatGameTime = (gameTime: number) => {
     const hours = Math.floor(gameTime / 3600000);
@@ -107,16 +98,29 @@ const App: React.FC = () => {
 
   return (
     <div className="container">
-      <h1>Uncharted Territory</h1>
+      <header className="header">
+        <h1>Uncharted Territory</h1>
+        {gameState && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span>Credits: {gameState.player.credits.toLocaleString()}</span>
+            <span className={`status ${connectionStatus}`}>
+              {connectionStatus.toUpperCase()}
+            </span>
+            <button className="button" onClick={handleDisconnect}>
+              Leave Game
+            </button>
+          </div>
+        )}
+      </header>
       
       {error && (
-        <div className="card" style={{ backgroundColor: '#dc3545', color: 'white' }}>
+        <div className="error">
           <strong>Error:</strong> {error}
         </div>
       )}
 
       {!gameState ? (
-        <div className="card">
+        <div className="game-creation">
           <h2>Create New Game</h2>
           <div style={{ marginBottom: '20px' }}>
             <input
@@ -130,7 +134,7 @@ const App: React.FC = () => {
               style={{ marginRight: '10px', width: '200px' }}
             />
             <button
-              className="button"
+              className="button primary"
               onClick={handleCreateGame}
               disabled={isLoading || !playerName.trim()}
             >
@@ -139,139 +143,128 @@ const App: React.FC = () => {
           </div>
         </div>
       ) : (
-        <>
-          <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2>Game Status</h2>
-              <button className="button" onClick={handleDisconnect}>
-                Leave Game
-              </button>
-            </div>
-            <p><strong>Player:</strong> {gameState.player.name}</p>
-            <p><strong>Credits:</strong> {gameState.player.credits.toLocaleString()}</p>
-            <p><strong>Game Time:</strong> {formatGameTime(gameState.gameTime)}</p>
-            <p><strong>Current Sector:</strong> {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}</p>
-            <p>
-              <strong>Connection:</strong>{' '}
-              <span className={`status ${connectionStatus}`}>
-                {connectionStatus.toUpperCase()}
-              </span>
-            </p>
-          </div>
-
-          <div className="card">
-            <h3>Sector Navigation</h3>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '10px' }}>
-              {gameState.sectors.map(sector => (
-                <button
-                  key={sector.id}
-                  className={`button ${sector.id === (currentViewSectorId || gameState.currentSectorId) ? 'active' : ''}`}
-                  onClick={() => handleSectorNavigation(sector.id)}
-                  style={{
-                    backgroundColor: sector.id === (currentViewSectorId || gameState.currentSectorId) ? '#4a9eff' : '#555',
-                    color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {sector.name}
-                </button>
-              ))}
-            </div>
-            <p style={{ fontSize: '14px', color: '#888' }}>
-              Viewing: {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.name} | 
-              Ships in: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}
-            </p>
-          </div>
-
-          <SectorMap 
-            gameState={gameState} 
-            selectedShipId={selectedShipId}
-            currentViewSectorId={currentViewSectorId || gameState.currentSectorId}
-            onShipCommand={handleShipCommand}
-          />
-
-          <div className="card">
-            <h3>Ships ({gameState.player.ships.length})</h3>
-            {gameState.player.ships.map(ship => (
-              <div 
-                key={ship.id} 
-                onClick={() => setSelectedShipId(ship.id)}
-                style={{ 
-                  border: selectedShipId === ship.id ? '2px solid #4a9eff' : '1px solid #444', 
-                  borderRadius: '4px', 
-                  padding: '10px', 
-                  margin: '10px 0',
-                  cursor: 'pointer',
-                  transition: 'border-color 0.2s'
-                }}
-              >
-                <h4>{ship.name}</h4>
-                <p><strong>Position:</strong> ({Math.round(ship.position.x)}, {Math.round(ship.position.y)})</p>
-                <p><strong>Sector:</strong> {ship.sectorId}</p>
-                <p><strong>Status:</strong> {ship.isMoving ? 'Moving' : 'Idle'}</p>
-                <p><strong>Cargo:</strong> {ship.cargo.length}/{ship.maxCargo}</p>
-                {ship.commandQueue && ship.commandQueue.length > 0 && (
-                  <div style={{ marginTop: '10px', padding: '5px', backgroundColor: '#2a2a2a', borderRadius: '4px' }}>
-                    <p><strong>Command Queue ({ship.commandQueue.length}):</strong></p>
-                    {ship.currentCommand && (
-                      <p style={{ color: '#4a9eff', fontSize: '12px' }}>
-                        ▶ Current: {ship.currentCommand.type}
-                        {ship.currentCommand.targetSectorId && ` → ${ship.currentCommand.targetSectorId}`}
-                      </p>
-                    )}
-                    {ship.commandQueue.slice(0, 3).map((cmd, index) => (
-                      <p key={cmd.id} style={{ fontSize: '12px', marginLeft: '10px', color: '#888' }}>
-                        {index + 1}. {cmd.type}
-                        {cmd.targetSectorId && ` → ${cmd.targetSectorId}`}
-                      </p>
-                    ))}
-                    {ship.commandQueue.length > 3 && (
-                      <p style={{ fontSize: '12px', marginLeft: '10px', color: '#666' }}>
-                        ... and {ship.commandQueue.length - 3} more
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="card">
-            <h3>Sectors ({gameState.sectors.length})</h3>
-            {gameState.sectors.map(sector => (
-              <div key={sector.id} style={{ 
-                border: '1px solid #444', 
-                borderRadius: '4px', 
-                padding: '10px', 
-                margin: '10px 0' 
-              }}>
-                <h4>{sector.name}</h4>
-                <p><strong>Coordinates:</strong> ({sector.coordinates.x}, {sector.coordinates.y})</p>
-                <p><strong>Stations:</strong> {sector.stations.length}</p>
-                <p><strong>Gates:</strong> {sector.gates.length}</p>
-              </div>
-            ))}
-          </div>
-
-          {events.length > 0 && (
+        <div className="game-layout">
+          {/* Left Pane - Ships */}
+          <div className="left-pane">
             <div className="card">
-              <h3>Recent Events</h3>
-              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                {events.slice().reverse().map(event => (
-                  <div key={event.id} style={{ 
-                    borderBottom: '1px solid #444', 
-                    padding: '5px 0' 
-                  }}>
-                    <span style={{ fontSize: '12px', color: '#888' }}>
-                      [{formatTime(event.timestamp)}]
-                    </span>{' '}
-                    {event.message}
+              <div className="card-header">
+                <h3>Ships ({gameState.player.ships.length})</h3>
+              </div>
+              <div className="card-content">
+                {gameState.player.ships.map(ship => (
+                  <div 
+                    key={ship.id} 
+                    onClick={() => setSelectedShipId(ship.id)}
+                    className={`ship-item ${selectedShipId === ship.id ? 'selected' : ''}`}
+                  >
+                    <div className="ship-name">{ship.name}</div>
+                    <div className="ship-details">Position: ({Math.round(ship.position.x)}, {Math.round(ship.position.y)})</div>
+                    <div className="ship-details">Sector: {ship.sectorId}</div>
+                    <div className="ship-details">Status: {ship.isMoving ? 'Moving' : 'Idle'}</div>
+                    <div className="ship-details">Cargo: {ship.cargo.length}/{ship.maxCargo}</div>
+                    {ship.commandQueue && ship.commandQueue.length > 0 && (
+                      <div className="command-queue">
+                        <div><strong>Queue ({ship.commandQueue.length}):</strong></div>
+                        {ship.currentCommand && (
+                          <div className="command-current">
+                            ▶ {ship.currentCommand.type}
+                            {ship.currentCommand.targetSectorId && ` → ${ship.currentCommand.targetSectorId}`}
+                          </div>
+                        )}
+                        {ship.commandQueue.slice(0, 2).map((cmd, index) => (
+                          <div key={cmd.id} className="command-queued">
+                            {index + 1}. {cmd.type}
+                            {cmd.targetSectorId && ` → ${cmd.targetSectorId}`}
+                          </div>
+                        ))}
+                        {ship.commandQueue.length > 2 && (
+                          <div className="command-queued">
+                            ... +{ship.commandQueue.length - 2} more
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-          )}
-        </>
+
+            {/* Game Status in left pane */}
+            <div className="card">
+              <div className="card-header">
+                <h3>Game Status</h3>
+              </div>
+              <div className="card-content">
+                <div className="ship-details">Player: {gameState.player.name}</div>
+                <div className="ship-details">Game Time: {formatGameTime(gameState.gameTime)}</div>
+                <div className="ship-details">Current Sector: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center Pane - Map */}
+          <div className="center-pane">
+            <div className="map-container">
+              <div className="map-header">
+                <h3>Sector Map: {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.name}</h3>
+                <div className="sector-buttons">
+                  {gameState.sectors.map(sector => (
+                    <button
+                      key={sector.id}
+                      className={`button ${sector.id === (currentViewSectorId || gameState.currentSectorId) ? 'active' : ''}`}
+                      onClick={() => handleSectorNavigation(sector.id)}
+                    >
+                      {sector.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="map-content">
+                <SectorMap 
+                  gameState={gameState} 
+                  selectedShipId={selectedShipId}
+                  currentViewSectorId={currentViewSectorId || gameState.currentSectorId}
+                  onShipCommand={handleShipCommand}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right Pane - Stations */}
+          <div className="right-pane">
+            <div className="card">
+              <div className="card-header">
+                <h3>Stations</h3>
+              </div>
+              <div className="card-content">
+                {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.stations.map(station => (
+                  <div key={station.id} className="station-item">
+                    <div className="station-name">{station.name}</div>
+                    <div className="station-details">Position: ({Math.round(station.position.x)}, {Math.round(station.position.y)})</div>
+                    <div className="station-details">Inventory: {station.inventory.length} items</div>
+                  </div>
+                )) || <div className="station-details">No stations in this sector</div>}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3>Sector Info</h3>
+              </div>
+              <div className="card-content">
+                {gameState.sectors.map(sector => (
+                  <div key={sector.id} className={sector.id === (currentViewSectorId || gameState.currentSectorId) ? "station-item" : "station-details"}>
+                    <div className="station-name">{sector.name}</div>
+                    <div className="station-details">Coordinates: ({sector.coordinates.x}, {sector.coordinates.y})</div>
+                    <div className="station-details">Stations: {sector.stations.length}</div>
+                    <div className="station-details">Gates: {sector.gates.length}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
       )}
     </div>
   );

@@ -8,7 +8,7 @@
 - heading "Ships (1)" [level=3]
 - text: "Discovery Position: (50, 50) Sector: argon-prime Status: Idle Cargo: 0/100"
 - heading "Game Status" [level=3]
-- text: "Player: PostGateTest Game Time: 0h 0m Current Sector: Argon Prime"
+- text: "Player: PathfindingTest Game Time: 0h 0m Current Sector: Argon Prime"
 - 'heading "Sector Map: Three''s Company" [level=3]'
 - button "Argon Prime"
 - button "Three's Company"
