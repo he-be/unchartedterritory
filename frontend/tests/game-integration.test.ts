@@ -23,8 +23,8 @@ test.describe('Uncharted Territory Game', () => {
     // Verify sectors are loaded (now in right pane)
     await expect(page.locator('text=Sector Info')).toBeVisible();
     await expect(page.locator('.right-pane .station-name:has-text("Argon Prime")')).toBeVisible();
-    await expect(page.locator('.right-pane .station-name:has-text("Three\'s Company")')).toBeVisible();
-    await expect(page.locator('.right-pane .station-name:has-text("Elena\'s Fortune")')).toBeVisible();
+    await expect(page.locator('.right-pane .station-name:has-text("Advanced Tech Factory")')).toBeVisible();
+    await expect(page.locator('.right-pane .station-name:has-text("Technology Research Laboratory")')).toBeVisible();
     
     // Verify ships exist (Discovery + Trader cargo ship)
     await expect(page.locator('text=Ships (2)')).toBeVisible();
@@ -78,9 +78,9 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();
     await expect(page.locator('canvas')).toBeVisible();
     
-    // Check that Argon Prime specifically has 3 stations (after sector expansion)
+    // Check that Argon Prime has 3 stations
     await expect(page.locator('text=Stations: 3').first()).toBeVisible();
-    await expect(page.locator('text=Gates: 3').first()).toBeVisible();
+    await expect(page.locator('text=Gates: 4').first()).toBeVisible();
   });
 
 });

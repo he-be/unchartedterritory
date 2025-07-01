@@ -13,6 +13,7 @@ import type {
   TradeData
 } from './types';
 import { TradingAI } from './trading-ai';
+import { SectorGraphManager } from './sector-graph';
 
 // Game loop configuration
 const TICK_RATE_HZ = 30;
@@ -23,9 +24,11 @@ export class GameSession implements DurableObject {
   private gameState: GameState | null = null;
   private lastUpdateTime = 0;
   private tradingAI: TradingAI | null = null;
+  private sectorGraph: SectorGraphManager;
 
   constructor(state: DurableObjectState, _env: unknown) {
     this.state = state;
+    this.sectorGraph = new SectorGraphManager();
     
     // Initialize game state from storage
     this.state.blockConcurrencyWhile(async () => {
@@ -35,6 +38,9 @@ export class GameSession implements DurableObject {
         this.gameState = stored as GameState;
         this.tradingAI = new TradingAI(this.gameState);
         console.log('DO Constructor: gameState loaded successfully.');
+        
+        // Validate sector gates on load
+        this.validateSectorGates();
       } else {
         console.log('DO Constructor: No gameState found in storage.');
       }
@@ -668,784 +674,8 @@ export class GameSession implements DurableObject {
   private createInitialGameState(playerName: string, gameId: string): GameState {
     const playerId = crypto.randomUUID();
     
-    // Create initial sectors with gates
-    const sectors: Sector[] = [
-      {
-        id: 'argon-prime',
-        name: 'Argon Prime',
-        coordinates: { x: 0, y: 0 },
-        stations: [
-          {
-            id: 'trading-station-1',
-            name: 'Trading Station Alpha',
-            position: { x: 100, y: 100 },
-            sectorId: 'argon-prime',
-            inventory: [
-              {
-                wareId: 'energy-cells',
-                quantity: 1000,
-                buyPrice: 0, // Trading station doesn't buy energy cells
-                sellPrice: 15 // Trading station sells energy cells to traders
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 95, // Trading station buys microchips from traders
-                sellPrice: 0 // Trading station doesn't sell microchips
-              }
-            ]
-          },
-          {
-            id: 'shipyard-1',
-            name: 'Argon Shipyard',
-            position: { x: -200, y: 150 },
-            sectorId: 'argon-prime',
-            inventory: [
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 11, // Shipyard buys ore for ship construction
-                sellPrice: 0 // Shipyard doesn't sell ore
-              }
-            ]
-          },
-          {
-            id: 'financial-center-1',
-            name: 'Argon Financial Center',
-            position: { x: 300, y: -200 },
-            sectorId: 'argon-prime',
-            inventory: [
-              {
-                wareId: 'financial-services',
-                quantity: 1000,
-                buyPrice: 0, // Financial center provides services
-                sellPrice: 50 // Financial center sells banking services
-              },
-              {
-                wareId: 'luxury-goods',
-                quantity: 0,
-                buyPrice: 305, // Financial center buys luxury goods for wealthy clients
-                sellPrice: 0
-              },
-              {
-                wareId: 'art-pieces',
-                quantity: 0,
-                buyPrice: 510, // Financial center buys art for investment
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-threes-company',
-            position: { x: 400, y: 0 },
-            targetSectorId: 'threes-company'
-          },
-          {
-            id: 'gate-to-elena-fortune',
-            position: { x: -400, y: 0 },
-            targetSectorId: 'elena-fortune'
-          },
-          {
-            id: 'gate-to-menelaus-paradise',
-            position: { x: 0, y: 400 },
-            targetSectorId: 'menelaus-paradise'
-          }
-        ]
-      },
-      {
-        id: 'threes-company',
-        name: "Three's Company",
-        coordinates: { x: 1, y: 0 },
-        stations: [
-          {
-            id: 'mining-station-1',
-            name: 'Ore Processing Plant',
-            position: { x: 0, y: 200 },
-            sectorId: 'threes-company',
-            inventory: [
-              {
-                wareId: 'ore',
-                quantity: 2000,
-                buyPrice: 0, // Mining plant doesn't buy ore (it produces ore)
-                sellPrice: 8 // Mining plant sells ore to traders
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 18, // Mining plant buys energy cells for operations
-                sellPrice: 0 // Mining plant doesn't sell energy cells
-              }
-            ]
-          },
-          {
-            id: 'equipment-repair-1',
-            name: 'Mining Equipment Repair Station',
-            position: { x: -250, y: -100 },
-            sectorId: 'threes-company',
-            inventory: [
-              {
-                wareId: 'repair-services',
-                quantity: 300,
-                buyPrice: 0, // Repair station provides services
-                sellPrice: 90 // Repair station sells repair services
-              },
-              {
-                wareId: 'farm-equipment',
-                quantity: 0,
-                buyPrice: 155, // Repair station buys equipment to refurbish
-                sellPrice: 0
-              },
-              {
-                wareId: 'refined-metals',
-                quantity: 0,
-                buyPrice: 63, // Repair station buys metals for parts
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-argon-prime-2',
-            position: { x: -400, y: 0 },
-            targetSectorId: 'argon-prime'
-          }
-        ]
-      },
-      {
-        id: 'elena-fortune',
-        name: "Elena's Fortune",
-        coordinates: { x: -1, y: 0 },
-        stations: [
-          {
-            id: 'tech-factory-1',
-            name: 'Advanced Tech Factory',
-            position: { x: 150, y: -100 },
-            sectorId: 'elena-fortune',
-            inventory: [
-              {
-                wareId: 'microchips',
-                quantity: 300,
-                buyPrice: 0, // Tech factory doesn't buy microchips (it produces them)
-                sellPrice: 85 // Tech factory sells microchips to traders
-              },
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 10, // Tech factory buys ore for manufacturing
-                sellPrice: 0 // Tech factory doesn't sell ore
-              }
-            ]
-          },
-          {
-            id: 'research-lab-1',
-            name: 'Technology Research Laboratory',
-            position: { x: -200, y: 200 },
-            sectorId: 'elena-fortune',
-            inventory: [
-              {
-                wareId: 'tech-blueprints',
-                quantity: 150,
-                buyPrice: 0, // Research lab produces blueprints
-                sellPrice: 400 // Research lab sells valuable blueprints
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 88, // Research lab buys microchips for prototyping
-                sellPrice: 0
-              },
-              {
-                wareId: 'research-data',
-                quantity: 0,
-                buyPrice: 230, // Research lab buys data for analysis
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-argon-prime-3',
-            position: { x: 400, y: 0 },
-            targetSectorId: 'argon-prime'
-          }
-        ]
-      },
-      {
-        id: 'menelaus-paradise',
-        name: "Menelaus' Paradise",
-        coordinates: { x: 0, y: 1 },
-        stations: [
-          {
-            id: 'agricultural-hub-1',
-            name: 'Paradise Agricultural Hub',
-            position: { x: -150, y: 200 },
-            sectorId: 'menelaus-paradise',
-            inventory: [
-              {
-                wareId: 'food-rations',
-                quantity: 1500,
-                buyPrice: 0, // Agricultural hub produces food
-                sellPrice: 25 // Agricultural hub sells food to traders
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 20, // Agricultural hub buys energy for operations
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'equipment-depot-1',
-            name: 'Agricultural Equipment Depot',
-            position: { x: 250, y: -100 },
-            sectorId: 'menelaus-paradise',
-            inventory: [
-              {
-                wareId: 'refined-metals',
-                quantity: 0,
-                buyPrice: 65, // Depot buys refined metals for equipment manufacturing
-                sellPrice: 0
-              },
-              {
-                wareId: 'farm-equipment',
-                quantity: 800,
-                buyPrice: 0, // Depot produces farm equipment
-                sellPrice: 150 // Depot sells farm equipment
-              }
-            ]
-          },
-          {
-            id: 'energy-plant-1',
-            name: 'Solar Energy Plant',
-            position: { x: 100, y: 300 },
-            sectorId: 'menelaus-paradise',
-            inventory: [
-              {
-                wareId: 'energy-cells',
-                quantity: 2000,
-                buyPrice: 0, // Solar plant produces energy
-                sellPrice: 12 // Solar plant sells cheap energy
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 88, // Solar plant buys microchips for control systems
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-argon-prime-4',
-            position: { x: 0, y: -400 },
-            targetSectorId: 'argon-prime'
-          },
-          {
-            id: 'gate-to-hatikvah-choice',
-            position: { x: 300, y: 100 },
-            targetSectorId: 'hatikvah-choice'
-          }
-        ]
-      },
-      {
-        id: 'hatikvah-choice',
-        name: "Hatikvah's Choice",
-        coordinates: { x: 1, y: 1 },
-        stations: [
-          {
-            id: 'weapon-factory-1',
-            name: 'Advanced Weapons Factory',
-            position: { x: 100, y: -150 },
-            sectorId: 'hatikvah-choice',
-            inventory: [
-              {
-                wareId: 'weapon-components',
-                quantity: 800,
-                buyPrice: 0, // Weapon factory produces components
-                sellPrice: 120 // Weapon factory sells components
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 90, // Weapon factory buys microchips for manufacturing
-                sellPrice: 0
-              },
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 12, // Weapon factory buys ore for metal components
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'ammunition-plant-1',
-            name: 'Ammunition Manufacturing Plant',
-            position: { x: -200, y: 100 },
-            sectorId: 'hatikvah-choice',
-            inventory: [
-              {
-                wareId: 'ammunition',
-                quantity: 1200,
-                buyPrice: 0, // Ammunition plant produces ammo
-                sellPrice: 45 // Ammunition plant sells ammo
-              },
-              {
-                wareId: 'refined-metals',
-                quantity: 0,
-                buyPrice: 62, // Ammunition plant buys refined metals for casings
-                sellPrice: 0
-              },
-              {
-                wareId: 'helium',
-                quantity: 0,
-                buyPrice: 37, // Ammunition plant buys helium for propellant
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'defense-systems-1',
-            name: 'Defense Systems Assembly',
-            position: { x: 250, y: 200 },
-            sectorId: 'hatikvah-choice',
-            inventory: [
-              {
-                wareId: 'defense-systems',
-                quantity: 300,
-                buyPrice: 0, // Defense systems assembly produces systems
-                sellPrice: 280 // Defense systems assembly sells expensive systems
-              },
-              {
-                wareId: 'weapon-components',
-                quantity: 0,
-                buyPrice: 125, // Defense systems buys weapon components for integration
-                sellPrice: 0
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 92, // Defense systems buys microchips for control systems
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-menelaus-paradise-2',
-            position: { x: -300, y: -100 },
-            targetSectorId: 'menelaus-paradise'
-          },
-          {
-            id: 'gate-to-antigone-memorial',
-            position: { x: 200, y: 250 },
-            targetSectorId: 'antigone-memorial'
-          }
-        ]
-      },
-      {
-        id: 'antigone-memorial',
-        name: "Antigone Memorial",
-        coordinates: { x: 2, y: 1 },
-        stations: [
-          {
-            id: 'medical-research-1',
-            name: 'Medical Research Station',
-            position: { x: 0, y: 180 },
-            sectorId: 'antigone-memorial',
-            inventory: [
-              {
-                wareId: 'medical-supplies',
-                quantity: 600,
-                buyPrice: 0, // Medical station produces supplies
-                sellPrice: 80 // Medical station sells supplies
-              },
-              {
-                wareId: 'food-rations',
-                quantity: 0,
-                buyPrice: 30, // Medical station buys food for staff
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'pharmaceutical-lab-1',
-            name: 'Pharmaceutical Laboratory',
-            position: { x: -250, y: -100 },
-            sectorId: 'antigone-memorial',
-            inventory: [
-              {
-                wareId: 'pharmaceuticals',
-                quantity: 400,
-                buyPrice: 0, // Pharmaceutical lab produces drugs
-                sellPrice: 180 // Pharmaceutical lab sells expensive drugs
-              },
-              {
-                wareId: 'medical-supplies',
-                quantity: 0,
-                buyPrice: 85, // Pharmaceutical lab buys medical supplies for research
-                sellPrice: 0
-              },
-              {
-                wareId: 'helium',
-                quantity: 0,
-                buyPrice: 38, // Pharmaceutical lab buys helium for cryogenic storage
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-hatikvah-choice-2',
-            position: { x: -200, y: -250 },
-            targetSectorId: 'hatikvah-choice'
-          },
-          {
-            id: 'gate-to-herrons-nebula',
-            position: { x: 300, y: 0 },
-            targetSectorId: 'herrons-nebula'
-          }
-        ]
-      },
-      {
-        id: 'herrons-nebula',
-        name: "Herron's Nebula",
-        coordinates: { x: 3, y: 1 },
-        stations: [
-          {
-            id: 'gas-mining-1',
-            name: 'Nebula Gas Extraction',
-            position: { x: -100, y: -200 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              {
-                wareId: 'helium',
-                quantity: 2500,
-                buyPrice: 0, // Gas mining produces helium
-                sellPrice: 35 // Gas mining sells helium
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 22, // Gas mining buys energy for extraction
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'gas-processing-1',
-            name: 'Advanced Gas Processing Facility',
-            position: { x: 200, y: 150 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              {
-                wareId: 'noble-gases',
-                quantity: 800,
-                buyPrice: 0, // Gas processing facility produces rare gases
-                sellPrice: 95 // Gas processing facility sells expensive noble gases
-              },
-              {
-                wareId: 'helium',
-                quantity: 0,
-                buyPrice: 38, // Gas processing buys helium for refinement
-                sellPrice: 0
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 24, // Gas processing buys energy for operations
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'research-outpost-1',
-            name: 'Nebula Research Outpost',
-            position: { x: 50, y: 300 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              {
-                wareId: 'research-data',
-                quantity: 200,
-                buyPrice: 0, // Research outpost produces scientific data
-                sellPrice: 220 // Research outpost sells valuable data
-              },
-              {
-                wareId: 'food-rations',
-                quantity: 0,
-                buyPrice: 28, // Research outpost buys food for researchers
-                sellPrice: 0
-              },
-              {
-                wareId: 'medical-supplies',
-                quantity: 0,
-                buyPrice: 82, // Research outpost buys medical supplies for safety
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-antigone-memorial-2',
-            position: { x: -300, y: 0 },
-            targetSectorId: 'antigone-memorial'
-          },
-          {
-            id: 'gate-to-presidents-end',
-            position: { x: 150, y: 300 },
-            targetSectorId: 'presidents-end'
-          }
-        ]
-      },
-      {
-        id: 'presidents-end',
-        name: "President's End",
-        coordinates: { x: 3, y: 2 },
-        stations: [
-          {
-            id: 'shipyard-2',
-            name: 'Presidential Shipyard',
-            position: { x: 200, y: 100 },
-            sectorId: 'presidents-end',
-            inventory: [
-              {
-                wareId: 'ship-hulls',
-                quantity: 400,
-                buyPrice: 0, // Shipyard produces hulls
-                sellPrice: 200 // Shipyard sells hulls
-              },
-              {
-                wareId: 'weapon-components',
-                quantity: 0,
-                buyPrice: 130, // Shipyard buys weapons for ship armament
-                sellPrice: 0
-              },
-              {
-                wareId: 'helium',
-                quantity: 0,
-                buyPrice: 40, // Shipyard buys helium for fuel systems
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'engine-factory-1',
-            name: 'Advanced Engine Manufacturing',
-            position: { x: -150, y: -200 },
-            sectorId: 'presidents-end',
-            inventory: [
-              {
-                wareId: 'ship-engines',
-                quantity: 250,
-                buyPrice: 0, // Engine factory produces engines
-                sellPrice: 350 // Engine factory sells expensive engines
-              },
-              {
-                wareId: 'refined-metals',
-                quantity: 0,
-                buyPrice: 68, // Engine factory buys refined metals for construction
-                sellPrice: 0
-              },
-              {
-                wareId: 'noble-gases',
-                quantity: 0,
-                buyPrice: 100, // Engine factory buys noble gases for specialized components
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-herrons-nebula-2',
-            position: { x: -150, y: -300 },
-            targetSectorId: 'herrons-nebula'
-          },
-          {
-            id: 'gate-to-lucky-planets',
-            position: { x: -250, y: 200 },
-            targetSectorId: 'lucky-planets'
-          }
-        ]
-      },
-      {
-        id: 'lucky-planets',
-        name: "Lucky Planets",
-        coordinates: { x: 2, y: 2 },
-        stations: [
-          {
-            id: 'luxury-factory-1',
-            name: 'Luxury Goods Factory',
-            position: { x: -50, y: -100 },
-            sectorId: 'lucky-planets',
-            inventory: [
-              {
-                wareId: 'luxury-goods',
-                quantity: 200,
-                buyPrice: 0, // Luxury factory produces goods
-                sellPrice: 300 // Luxury factory sells expensive goods
-              },
-              {
-                wareId: 'medical-supplies',
-                quantity: 0,
-                buyPrice: 90, // Luxury factory buys medical supplies for premium products
-                sellPrice: 0
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 95, // Luxury factory buys microchips for high-tech products
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'casino-resort-1',
-            name: 'Orbital Casino Resort',
-            position: { x: 200, y: 150 },
-            sectorId: 'lucky-planets',
-            inventory: [
-              {
-                wareId: 'entertainment-services',
-                quantity: 500,
-                buyPrice: 0, // Casino resort provides entertainment
-                sellPrice: 120 // Casino resort sells entertainment services
-              },
-              {
-                wareId: 'luxury-goods',
-                quantity: 0,
-                buyPrice: 310, // Casino resort buys luxury goods for guests
-                sellPrice: 0
-              },
-              {
-                wareId: 'food-rations',
-                quantity: 0,
-                buyPrice: 32, // Casino resort buys food for restaurants
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'art-gallery-1',
-            name: 'Galactic Art Gallery',
-            position: { x: -200, y: 250 },
-            sectorId: 'lucky-planets',
-            inventory: [
-              {
-                wareId: 'art-pieces',
-                quantity: 100,
-                buyPrice: 0, // Art gallery showcases art
-                sellPrice: 500 // Art gallery sells very expensive art
-              },
-              {
-                wareId: 'pharmaceuticals',
-                quantity: 0,
-                buyPrice: 185, // Art gallery buys pharmaceuticals for preservation
-                sellPrice: 0
-              },
-              {
-                wareId: 'research-data',
-                quantity: 0,
-                buyPrice: 225, // Art gallery buys research data for authentication
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-presidents-end-2',
-            position: { x: 250, y: -200 },
-            targetSectorId: 'presidents-end'
-          },
-          {
-            id: 'gate-to-cloudy-prospect',
-            position: { x: -300, y: 0 },
-            targetSectorId: 'cloudy-prospect'
-          }
-        ]
-      },
-      {
-        id: 'cloudy-prospect',
-        name: "Cloudy Prospect",
-        coordinates: { x: 1, y: 2 },
-        stations: [
-          {
-            id: 'refinery-1',
-            name: 'Advanced Material Refinery',
-            position: { x: 150, y: 200 },
-            sectorId: 'cloudy-prospect',
-            inventory: [
-              {
-                wareId: 'refined-metals',
-                quantity: 1200,
-                buyPrice: 0, // Refinery produces refined metals
-                sellPrice: 60 // Refinery sells refined metals
-              },
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 9, // Refinery buys ore for processing
-                sellPrice: 0
-              },
-              {
-                wareId: 'helium',
-                quantity: 0,
-                buyPrice: 38, // Refinery buys helium for high-temperature processes
-                sellPrice: 0
-              }
-            ]
-          },
-          {
-            id: 'chemical-plant-1',
-            name: 'Chemical Processing Plant',
-            position: { x: -100, y: -150 },
-            sectorId: 'cloudy-prospect',
-            inventory: [
-              {
-                wareId: 'chemicals',
-                quantity: 900,
-                buyPrice: 0, // Chemical plant produces chemicals
-                sellPrice: 75 // Chemical plant sells chemicals
-              },
-              {
-                wareId: 'refined-metals',
-                quantity: 0,
-                buyPrice: 65, // Chemical plant buys refined metals for equipment
-                sellPrice: 0
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 25, // Chemical plant buys energy for operations
-                sellPrice: 0
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-lucky-planets-2',
-            position: { x: 300, y: 0 },
-            targetSectorId: 'lucky-planets'
-          },
-          {
-            id: 'gate-to-menelaus-paradise-3',
-            position: { x: -100, y: -300 },
-            targetSectorId: 'menelaus-paradise'
-          }
-        ]
-      }
-    ];
+    // Generate all sectors dynamically from the sector graph (single source of truth)
+    const sectors: Sector[] = this.generateAllSectorsFromGraph();
 
     // Create initial ships
     const ship: Ship = {
@@ -1765,6 +995,212 @@ export class GameSession implements DurableObject {
       }
     } catch (error) {
       console.error('Error executing auto-trade:', error);
+    }
+  }
+
+  /**
+   * Generate all sectors from the sector graph with their stations and gates
+   */
+  private generateAllSectorsFromGraph(): Sector[] {
+    const allSectorMetadata = this.sectorGraph.getAllSectorMetadata();
+    const sectors: Sector[] = [];
+    
+    for (const metadata of allSectorMetadata) {
+      const sector: Sector = {
+        id: metadata.id,
+        name: metadata.name,
+        coordinates: metadata.coordinates,
+        stations: this.createStationsForSector(metadata.id),
+        gates: this.sectorGraph.generateGatesForSector(metadata.id)
+      };
+      sectors.push(sector);
+    }
+    
+    return sectors;
+  }
+
+  /**
+   * Create stations for a specific sector
+   */
+  private createStationsForSector(sectorId: string): Station[] {
+    // Define stations for each sector based on their economic purpose
+    switch (sectorId) {
+      case 'argon-prime':
+        return [
+          {
+            id: 'tech-factory-1',
+            name: 'Advanced Tech Factory',
+            position: { x: 150, y: -100 },
+            sectorId: 'argon-prime',
+            inventory: [
+              { wareId: 'microchips', quantity: 300, buyPrice: 0, sellPrice: 85 },
+              { wareId: 'ore', quantity: 0, buyPrice: 10, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'research-lab-1',
+            name: 'Technology Research Laboratory',
+            position: { x: -200, y: 200 },
+            sectorId: 'argon-prime',
+            inventory: [
+              { wareId: 'tech-blueprints', quantity: 150, buyPrice: 0, sellPrice: 400 },
+              { wareId: 'microchips', quantity: 0, buyPrice: 88, sellPrice: 0 },
+              { wareId: 'research-data', quantity: 0, buyPrice: 230, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'financial-center-1',
+            name: 'Argon Financial Center',
+            position: { x: 300, y: -200 },
+            sectorId: 'argon-prime',
+            inventory: [
+              { wareId: 'financial-services', quantity: 1000, buyPrice: 0, sellPrice: 50 },
+              { wareId: 'luxury-goods', quantity: 0, buyPrice: 305, sellPrice: 0 },
+              { wareId: 'art-pieces', quantity: 0, buyPrice: 510, sellPrice: 0 }
+            ]
+          }
+        ];
+      
+      case 'three-worlds':
+        return [
+          {
+            id: 'trading-station-1',
+            name: 'Trading Station Alpha',
+            position: { x: 100, y: 100 },
+            sectorId: 'three-worlds',
+            inventory: [
+              { wareId: 'energy-cells', quantity: 1000, buyPrice: 0, sellPrice: 15 },
+              { wareId: 'microchips', quantity: 0, buyPrice: 95, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'shipyard-1',
+            name: 'Three Worlds Shipyard',
+            position: { x: -200, y: 150 },
+            sectorId: 'three-worlds',
+            inventory: [
+              { wareId: 'ore', quantity: 0, buyPrice: 11, sellPrice: 0 }
+            ]
+          }
+        ];
+      
+      case 'power-circle':
+        return [
+          {
+            id: 'mining-station-1',
+            name: 'Ore Processing Plant',
+            position: { x: 0, y: 200 },
+            sectorId: 'power-circle',
+            inventory: [
+              { wareId: 'ore', quantity: 2000, buyPrice: 0, sellPrice: 8 },
+              { wareId: 'energy-cells', quantity: 0, buyPrice: 18, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'equipment-repair-1',
+            name: 'Mining Equipment Repair Station',
+            position: { x: -250, y: -100 },
+            sectorId: 'power-circle',
+            inventory: [
+              { wareId: 'repair-services', quantity: 300, buyPrice: 0, sellPrice: 90 },
+              { wareId: 'farm-equipment', quantity: 0, buyPrice: 155, sellPrice: 0 },
+              { wareId: 'refined-metals', quantity: 0, buyPrice: 63, sellPrice: 0 }
+            ]
+          }
+        ];
+      
+      case 'herrons-nebula':
+        return [
+          {
+            id: 'gas-mining-1',
+            name: 'Nebula Gas Extraction',
+            position: { x: -100, y: -200 },
+            sectorId: 'herrons-nebula',
+            inventory: [
+              { wareId: 'helium', quantity: 2500, buyPrice: 0, sellPrice: 35 },
+              { wareId: 'energy-cells', quantity: 0, buyPrice: 22, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'gas-processing-1',
+            name: 'Advanced Gas Processing Facility',
+            position: { x: 200, y: 150 },
+            sectorId: 'herrons-nebula',
+            inventory: [
+              { wareId: 'noble-gases', quantity: 800, buyPrice: 0, sellPrice: 95 },
+              { wareId: 'helium', quantity: 0, buyPrice: 38, sellPrice: 0 },
+              { wareId: 'energy-cells', quantity: 0, buyPrice: 24, sellPrice: 0 }
+            ]
+          },
+          {
+            id: 'research-outpost-1',
+            name: 'Nebula Research Outpost',
+            position: { x: 50, y: 300 },
+            sectorId: 'herrons-nebula',
+            inventory: [
+              { wareId: 'research-data', quantity: 200, buyPrice: 0, sellPrice: 220 },
+              { wareId: 'food-rations', quantity: 0, buyPrice: 28, sellPrice: 0 },
+              { wareId: 'medical-supplies', quantity: 0, buyPrice: 82, sellPrice: 0 }
+            ]
+          }
+        ];
+      
+      // Add basic stations for other sectors
+      default:
+        return [
+          {
+            id: `station-${sectorId}-1`,
+            name: `${this.sectorGraph.getSectorMetadata(sectorId)?.name || sectorId} Station`,
+            position: { x: 0, y: 0 },
+            sectorId: sectorId,
+            inventory: [
+              { wareId: 'energy-cells', quantity: 500, buyPrice: 0, sellPrice: 20 }
+            ]
+          }
+        ];
+    }
+  }
+
+  /**
+   * Validate sector gates against the graph and log any issues
+   */
+  private validateSectorGates(): void {
+    if (!this.gameState) return;
+
+    console.log('🔍 Validating sector gate configuration...');
+    
+    const validationResult = this.sectorGraph.validateSectorGates(this.gameState.sectors);
+    
+    if (validationResult.isValid) {
+      console.log('✅ All sector gates are properly configured');
+    } else {
+      console.error('❌ Sector gate validation failed:');
+      validationResult.errors.forEach(error => console.error(`  - ${error}`));
+      
+      if (validationResult.missingGates.length > 0) {
+        console.error('🚫 Missing gates:');
+        validationResult.missingGates.forEach(gate => 
+          console.error(`  - ${gate.fromSectorId} → ${gate.toSectorId}`)
+        );
+      }
+      
+      if (validationResult.extraGates.length > 0) {
+        console.error('⚠️ Extra gates:');
+        validationResult.extraGates.forEach(gate => 
+          console.error(`  - ${gate.id} → ${gate.targetSectorId}`)
+        );
+      }
+    }
+
+    // Also validate graph connectivity
+    const allSectorIds = this.gameState.sectors.map(s => s.id);
+    const connectivityResult = this.sectorGraph.validateGraphConnectivity(allSectorIds);
+    
+    if (connectivityResult.isConnected) {
+      console.log('✅ All sectors are reachable (graph is connected)');
+    } else {
+      console.error('❌ Graph connectivity issues:');
+      connectivityResult.errors.forEach(error => console.error(`  - ${error}`));
     }
   }
 }

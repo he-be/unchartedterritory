@@ -63,6 +63,24 @@ export interface Gate {
   targetSectorId: string;
 }
 
+// Sector connection graph - single source of truth for sector connectivity
+export interface SectorConnection {
+  fromSectorId: string;
+  toSectorId: string;
+  gatePosition: Vector2; // Position of gate in fromSector
+}
+
+export interface SectorGraph {
+  connections: SectorConnection[];
+}
+
+export interface GateValidationResult {
+  isValid: boolean;
+  errors: string[];
+  missingGates: SectorConnection[];
+  extraGates: Gate[];
+}
+
 export interface Player {
   id: string;
   name: string;
