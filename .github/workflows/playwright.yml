@@ -13,11 +13,18 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Setup Volta environment
+      run: |
+        export VOLTA_HOME="$HOME/.volta"
+        export PATH="$VOLTA_HOME/bin:$PATH"
+        echo "VOLTA_HOME=$VOLTA_HOME" >> $GITHUB_ENV
+        echo "$VOLTA_HOME/bin" >> $GITHUB_PATH
+        
     - name: Verify Node.js installation
       run: |
         echo "Node.js version: $(node --version)"
         echo "npm version: $(npm --version)"
-        echo "Expected: Node.js v22.17.0 (pre-installed on self-hosted runner)"
+        echo "Expected: Node.js v22.17.0 (pre-installed via Volta)"
         
     - name: Cache backend node_modules
       uses: corca-ai/local-cache@v2
@@ -55,15 +62,21 @@ jobs:
         
     - name: Install backend dependencies
       working-directory: ./backend
-      run: npm ci --prefer-offline
+      run: |
+        export PATH="$HOME/.volta/bin:$PATH"
+        npm ci --prefer-offline
       
     - name: Install frontend dependencies
       working-directory: ./frontend
-      run: npm ci --prefer-offline
+      run: |
+        export PATH="$HOME/.volta/bin:$PATH"
+        npm ci --prefer-offline
       
     - name: Build frontend assets
       working-directory: ./frontend
-      run: npm run build:assets
+      run: |
+        export PATH="$HOME/.volta/bin:$PATH"
+        npm run build:assets
       
     - name: Check if browsers exist after cache restore
       id: check-browsers-after-cache
@@ -83,6 +96,7 @@ jobs:
         echo "Installing Playwright browsers from scratch..."
         # NOTE: Do NOT use --with-deps flag as it requires sudo privileges
         # and cannot run unattended in CI environments
+        export PATH="$HOME/.volta/bin:$PATH"
         npx playwright install chromium
         echo "✅ Playwright browsers installed successfully"
         
@@ -96,6 +110,7 @@ jobs:
     - name: Start backend server
       working-directory: ./backend
       run: |
+        export PATH="$HOME/.volta/bin:$PATH"
         npx wrangler dev --port 8788 &
         sleep 10
         
@@ -171,13 +186,17 @@ jobs:
         });
         EOF
         
+        export PATH="$HOME/.volta/bin:$PATH"
         npm install http-proxy
+        export PATH="$HOME/.volta/bin:$PATH"
         node proxy-server.js &
         sleep 5
         
     - name: Run Playwright tests
       working-directory: ./frontend
-      run: npx playwright test
+      run: |
+        export PATH="$HOME/.volta/bin:$PATH"
+        npx playwright test
       
     - uses: actions/upload-artifact@v4
       if: always()
