@@ -3,6 +3,7 @@ import type {
   Player, 
   Sector, 
   Ship, 
+  Station,
   Gate,
   Vector2,
   ShipQueueCommand,
@@ -11,6 +12,7 @@ import type {
   ShipCommand,
   TradeData
 } from './types';
+import { TradingAI } from './trading-ai';
 
 // Game loop configuration
 const TICK_RATE_HZ = 30;
@@ -20,6 +22,7 @@ export class GameSession implements DurableObject {
   private state: DurableObjectState;
   private gameState: GameState | null = null;
   private lastUpdateTime = 0;
+  private tradingAI: TradingAI | null = null;
 
   constructor(state: DurableObjectState, _env: unknown) {
     this.state = state;
@@ -30,6 +33,7 @@ export class GameSession implements DurableObject {
       const stored = await this.state.storage.get('gameState');
       if (stored) {
         this.gameState = stored as GameState;
+        this.tradingAI = new TradingAI(this.gameState);
         console.log('DO Constructor: gameState loaded successfully.');
       } else {
         console.log('DO Constructor: No gameState found in storage.');
@@ -101,6 +105,7 @@ export class GameSession implements DurableObject {
       console.log(`Creating new game with ID: ${gameId}, player: ${body.playerName}`);
       
       this.gameState = this.createInitialGameState(body.playerName, gameId);
+      this.tradingAI = new TradingAI(this.gameState);
       await this.saveGameState();
       
       console.log(`Game created successfully: ${gameId}`);
@@ -325,6 +330,21 @@ export class GameSession implements DurableObject {
           }
         }
         break;
+      
+      case 'auto_trade':
+        if (this.tradingAI) {
+          const tradingCommands = this.tradingAI.generateTradingCommands(ship);
+          if (tradingCommands.length > 0) {
+            ship.commandQueue.unshift(...tradingCommands);
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} starting auto-trade sequence`,
+            });
+          }
+        }
+        break;
         
     }
 
@@ -542,6 +562,21 @@ export class GameSession implements DurableObject {
           message: `${ship.name} is docking at station ${nextCommand.stationId}`,
         });
         break;
+      
+      case 'auto_trade':
+        if (this.tradingAI) {
+          const tradingCommands = this.tradingAI.generateTradingCommands(ship);
+          if (tradingCommands.length > 0) {
+            ship.commandQueue.unshift(...tradingCommands);
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} continuing auto-trade`,
+            });
+          }
+        }
+        break;
     }
 
     await this.saveGameState();
@@ -687,7 +722,7 @@ export class GameSession implements DurableObject {
       }
     ];
 
-    // Create initial ship
+    // Create initial ships
     const ship: Ship = {
       id: crypto.randomUUID(),
       name: 'Discovery',
@@ -700,11 +735,28 @@ export class GameSession implements DurableObject {
       currentCommand: undefined
     };
 
+    const cargoShip: Ship = {
+      id: crypto.randomUUID(),
+      name: 'Trader',
+      position: { x: 80, y: 80 },
+      sectorId: 'argon-prime',
+      isMoving: false,
+      cargo: [],
+      maxCargo: 200,
+      commandQueue: [{
+        id: crypto.randomUUID(),
+        type: 'auto_trade',
+        targetPosition: { x: 0, y: 0 },
+        metadata: { continuous: true }
+      }],
+      currentCommand: undefined
+    };
+
     const player: Player = {
       id: playerId,
       name: playerName,
       credits: 10000,
-      ships: [ship]
+      ships: [ship, cargoShip]
     };
 
     return {
@@ -797,6 +849,20 @@ export class GameSession implements DurableObject {
       // Process next command in queue after gate arrival
       await this.processShipCommandQueue(ship);
     } else {
+      // Check if ship arrived at a station
+      const nearbyStation = currentSector?.stations.find(station => {
+        const stationDistance = Math.sqrt(
+          Math.pow(ship.position.x - station.position.x, 2) + 
+          Math.pow(ship.position.y - station.position.y, 2)
+        );
+        return stationDistance < 30;
+      });
+      
+      if (nearbyStation && ship.currentCommand?.type === 'dock_at_station') {
+        // Execute trade if this is a trading command
+        await this.executeAutoTrade(ship, nearbyStation, ship.currentCommand);
+      }
+      
       // Normal arrival - clear current command
       if (ship.currentCommand) {
         ship.currentCommand = undefined;
@@ -827,6 +893,70 @@ export class GameSession implements DurableObject {
   private async saveGameState(): Promise<void> {
     if (this.gameState) {
       await this.state.storage.put('gameState', this.gameState);
+    }
+  }
+
+  private async executeAutoTrade(ship: Ship, station: Station, command: ShipQueueCommand): Promise<void> {
+    if (!this.gameState || !command.metadata) return;
+
+    const tradeType = command.metadata.tradeType as string;
+    const wareId = command.metadata.wareId as string;
+    const quantity = command.metadata.quantity as number;
+
+    if (!tradeType || !wareId || !quantity) return;
+
+    const stationInventory = station.inventory.find(inv => inv.wareId === wareId);
+    if (!stationInventory) return;
+
+    try {
+      if (tradeType === 'buy') {
+        // Buy from station (station selling to us)
+        const cost = stationInventory.sellPrice * quantity;
+        if (this.gameState.player.credits >= cost && stationInventory.quantity >= quantity) {
+          // Execute purchase
+          this.gameState.player.credits -= cost;
+          stationInventory.quantity -= quantity;
+          
+          // Add cargo to ship
+          const existingCargo = ship.cargo.find(c => c.wareId === wareId);
+          if (existingCargo) {
+            existingCargo.quantity += quantity;
+          } else {
+            ship.cargo.push({ wareId, quantity });
+          }
+
+          this.gameState.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState.gameTime,
+            type: 'trade',
+            message: `${ship.name} bought ${quantity} ${wareId} from ${station.name} for ${cost} credits`,
+          });
+        }
+      } else if (tradeType === 'sell') {
+        // Sell to station (station buying from us)
+        const shipCargo = ship.cargo.find(c => c.wareId === wareId);
+        if (shipCargo && shipCargo.quantity >= quantity) {
+          // Execute sale
+          const revenue = stationInventory.buyPrice * quantity;
+          this.gameState.player.credits += revenue;
+          stationInventory.quantity += quantity;
+          
+          // Remove cargo from ship
+          shipCargo.quantity -= quantity;
+          if (shipCargo.quantity <= 0) {
+            ship.cargo = ship.cargo.filter(c => c.wareId !== wareId);
+          }
+
+          this.gameState.events.push({
+            id: crypto.randomUUID(),
+            timestamp: this.gameState.gameTime,
+            type: 'trade',
+            message: `${ship.name} sold ${quantity} ${wareId} to ${station.name} for ${revenue} credits`,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error executing auto-trade:', error);
     }
   }
 }
