@@ -28,28 +28,22 @@ jobs:
             frontend/package-lock.json
       
       - name: Cache root node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: node_modules
           key: root-deps-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            root-deps-
             
       - name: Cache backend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: backend/node_modules
           key: backend-deps-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            backend-deps-
             
       - name: Cache frontend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: frontend/node_modules
           key: frontend-deps-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            frontend-deps-
       
       - name: Install root dependencies
         run: npm install --prefer-offline
@@ -102,28 +96,22 @@ jobs:
             frontend/package-lock.json
       
       - name: Cache root node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: node_modules
           key: root-deps-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            root-deps-
             
       - name: Cache backend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: backend/node_modules
           key: backend-deps-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            backend-deps-
             
       - name: Cache frontend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: frontend/node_modules
           key: frontend-deps-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            frontend-deps-
       
       - name: Install root dependencies
         run: npm install --prefer-offline
@@ -199,28 +187,22 @@ jobs:
             frontend/package-lock.json
       
       - name: Cache root node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: node_modules
           key: root-deps-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            root-deps-
             
       - name: Cache backend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: backend/node_modules
           key: backend-deps-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: |
-            backend-deps-
             
       - name: Cache frontend node_modules
-        uses: actions/cache@v4
+        uses: corca-ai/local-cache@v2
         with:
           path: frontend/node_modules
           key: frontend-deps-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            frontend-deps-
       
       - name: Install root dependencies
         run: npm install --prefer-offline
