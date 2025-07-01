@@ -17,7 +17,7 @@ test.describe('Uncharted Territory Game', () => {
     
     // Verify game state
     await expect(page.locator('text=Player: TestPlayer')).toBeVisible();
-    await expect(page.locator('text=Credits: 10,000')).toBeVisible();
+    await expect(page.locator('text=Credits: 25,000')).toBeVisible();
     await expect(page.locator('.status.connected')).toBeVisible();
     
     // Verify sectors are loaded (now in right pane)

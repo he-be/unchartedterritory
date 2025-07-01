@@ -17,15 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            backend/package-lock.json
-            frontend/package-lock.json
+      - name: Verify Node.js installation
+        run: |
+          echo "Node.js version: $(node --version)"
+          echo "npm version: $(npm --version)"
+          echo "Expected: Node.js v22.17.0 (pre-installed on self-hosted runner)"
+          echo "Expected: Node.js v22.17.0 (pre-installed on self-hosted runner)"
       
       - name: Cache root node_modules
         uses: corca-ai/local-cache@v2
@@ -88,15 +85,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            backend/package-lock.json
-            frontend/package-lock.json
+      - name: Verify Node.js installation
+        run: |
+          echo "Node.js version: $(node --version)"
+          echo "npm version: $(npm --version)"
+          echo "Expected: Node.js v22.17.0 (pre-installed on self-hosted runner)"
       
       - name: Cache root node_modules
         uses: corca-ai/local-cache@v2
@@ -182,15 +175,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            backend/package-lock.json
-            frontend/package-lock.json
+      - name: Verify Node.js installation
+        run: |
+          echo "Node.js version: $(node --version)"
+          echo "npm version: $(npm --version)"
+          echo "Expected: Node.js v22.17.0 (pre-installed on self-hosted runner)"
       
       - name: Cache root node_modules
         uses: corca-ai/local-cache@v2

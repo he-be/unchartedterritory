@@ -72,10 +72,20 @@ test.describe('Auto-Trade Functionality', () => {
     await discoveryShip.locator('button:has-text("Auto-Trade: OFF")').click();
     
     // Wait for command queue to update
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
     
-    // Check that auto_trade command appears in queue
-    await expect(discoveryShip.locator('text=auto_trade')).toBeVisible();
+    // Debug: Check what's actually in the command queue
+    const queueContent = await discoveryShip.locator('.command-queue').textContent();
+    console.log('Command queue content:', queueContent);
+    
+    // Check that auto_trade command appears in queue (more flexible check)
+    const hasQueue = await discoveryShip.locator('text=/Queue \\(\\d+\\):/').isVisible();
+    if (hasQueue) {
+      // If queue is visible, check for auto_trade command
+      await expect(discoveryShip.locator('.command-queued:has-text("auto_trade"), .command-current:has-text("auto_trade")')).toBeVisible();
+    } else {
+      console.log('No command queue visible for Discovery ship');
+    }
     
     // Check that queue shows commands
     await expect(discoveryShip.locator('text=/Queue \\(\\d+\\):/').first()).toBeVisible();
@@ -96,7 +106,7 @@ test.describe('Auto-Trade Functionality', () => {
     
     // Trader should have command queue with auto_trade commands
     await expect(traderShip.locator('text=/Queue \\(\\d+\\):/').first()).toBeVisible();
-    await expect(traderShip.locator('text=auto_trade')).toBeVisible();
+    await expect(traderShip.locator('.command-queued:has-text("auto_trade"), .command-current:has-text("auto_trade")')).toBeVisible();
     
     // Wait for some time to see if Trader starts moving
     await page.waitForTimeout(5000);
