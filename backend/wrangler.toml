@@ -23,3 +23,11 @@ name = "unchartedterritory-backend-staging"
 [[env.staging.durable_objects.bindings]]
 name = "GAME_SESSION"
 class_name = "GameSession"
+
+[env.production]
+name = "unchartedterritory-backend"
+
+# Durable Object bindings for production
+[[env.production.durable_objects.bindings]]
+name = "GAME_SESSION"
+class_name = "GameSession"
