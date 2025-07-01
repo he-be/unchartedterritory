@@ -26,6 +26,7 @@ export interface Ship {
   maxCargo: number;
   commandQueue: ShipQueueCommand[];
   currentCommand?: ShipQueueCommand;
+  isAutoTrading?: boolean; // Whether ship is in auto-trade mode
 }
 
 export interface ShipCargo {

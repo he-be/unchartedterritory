@@ -96,6 +96,21 @@ const App: React.FC = () => {
     setCurrentViewSectorId(sectorId);
   };
 
+  const handleToggleAutoTrade = (shipId: string, enabled: boolean) => {
+    if (!wsService) {
+      console.error('WebSocket service not available');
+      return;
+    }
+    
+    const message = {
+      type: 'toggleAutoTrade' as const,
+      shipId,
+      enabled
+    };
+    
+    wsService.sendMessage(message);
+  };
+
   return (
     <div className="container">
       <header className="header">
@@ -161,7 +176,25 @@ const App: React.FC = () => {
                     <div className="ship-details">Position: ({Math.round(ship.position.x)}, {Math.round(ship.position.y)})</div>
                     <div className="ship-details">Sector: {ship.sectorId}</div>
                     <div className="ship-details">Status: {ship.isMoving ? 'Moving' : 'Idle'}</div>
-                    <div className="ship-details">Cargo: {ship.cargo.length}/{ship.maxCargo}</div>
+                    <div className="ship-details">Cargo: {ship.cargo.reduce((total, cargo) => total + cargo.quantity, 0)}/{ship.maxCargo}</div>
+                    <div className="ship-controls">
+                      <button 
+                        className={`button ${ship.isAutoTrading ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleAutoTrade(ship.id, !ship.isAutoTrading);
+                        }}
+                        style={{
+                          fontSize: '12px',
+                          padding: '4px 8px',
+                          backgroundColor: ship.isAutoTrading ? '#4a9eff' : '#444',
+                          color: '#fff',
+                          marginTop: '4px'
+                        }}
+                      >
+                        Auto-Trade: {ship.isAutoTrading ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
                     {ship.commandQueue && ship.commandQueue.length > 0 && (
                       <div className="command-queue">
                         <div><strong>Queue ({ship.commandQueue.length}):</strong></div>

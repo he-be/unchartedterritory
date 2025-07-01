@@ -40,6 +40,8 @@ export class TradingAI {
     const opportunities: TradeOpportunity[] = [];
     const stationPrices = this.collectStationPrices();
     
+    console.log(`Collected prices from ${stationPrices.size} stations`);
+    
     // Get all unique ware IDs from all stations
     const wareIds = new Set<string>();
     for (const inventory of stationPrices.values()) {
@@ -47,6 +49,7 @@ export class TradingAI {
         wareIds.add(item.wareId);
       }
     }
+    console.log(`Found ${wareIds.size} unique wares: ${Array.from(wareIds).join(', ')}`);
 
     // For each ware, find best buy and sell opportunities
     for (const wareId of wareIds) {
@@ -88,14 +91,14 @@ export class TradingAI {
       if (!wareItem) continue;
 
       // Check for best buy price (station selling to us)
-      if (wareItem.sellPrice < bestBuyPrice && wareItem.quantity > 0) {
+      if (wareItem.sellPrice > 0 && wareItem.sellPrice < bestBuyPrice && wareItem.quantity > 0) {
         bestBuyPrice = wareItem.sellPrice;
         buyStation = station;
         buyInventory = wareItem;
       }
 
       // Check for best sell price (station buying from us)
-      if (wareItem.buyPrice > bestSellPrice) {
+      if (wareItem.buyPrice > 0 && wareItem.buyPrice > bestSellPrice) {
         bestSellPrice = wareItem.buyPrice;
         sellStation = station;
         sellInventory = wareItem;
@@ -104,11 +107,21 @@ export class TradingAI {
 
     // Calculate profit and feasibility
     if (buyStation && sellStation && buyInventory && sellInventory && bestSellPrice > bestBuyPrice) {
+      // Prevent trading with the same station (buy and sell at same location)
+      if (buyStation.id === sellStation.id) {
+        return null;
+      }
+      
       const profit = bestSellPrice - bestBuyPrice;
       const currentCargoQuantity = ship.cargo.reduce((total, cargo) => total + cargo.quantity, 0);
+      
+      // Calculate max affordable quantity based on player's credits
+      const maxAffordable = Math.floor(this.gameState.player.credits / bestBuyPrice);
+      
       const maxQuantity = Math.min(
-        ship.maxCargo - currentCargoQuantity,
-        buyInventory.quantity
+        ship.maxCargo - currentCargoQuantity,  // Ship cargo space
+        buyInventory.quantity,                 // Station stock
+        maxAffordable                          // Player affordability
       );
       
       if (maxQuantity > 0 && profit > 0) {
@@ -132,12 +145,33 @@ export class TradingAI {
    * Generate trading commands for a ship
    */
   generateTradingCommands(ship: Ship): ShipQueueCommand[] {
+    console.log(`Generating trading commands for ${ship.name} in sector ${ship.sectorId}`);
     const opportunity = this.findBestTradeOpportunity(ship);
     if (!opportunity) {
+      console.log(`No valid trading opportunity found for ${ship.name} - stopping auto-trade`);
       return [];
     }
+    console.log(`Found trading opportunity for ${ship.name}: Buy ${opportunity.wareId} from ${opportunity.buyStation.name} at ${opportunity.buyPrice}, sell to ${opportunity.sellStation.name} at ${opportunity.sellPrice}, profit: ${opportunity.totalProfit}`);
 
     const commands: ShipQueueCommand[] = [];
+
+    // If ship is not in the buy station's sector, need to navigate there first
+    if (ship.sectorId !== opportunity.buyStation.sectorId) {
+      // Find the gate to use
+      const currentSector = this.gameState.sectors.find(s => s.id === ship.sectorId);
+      const targetGate = currentSector?.gates.find(g => g.targetSectorId === opportunity.buyStation.sectorId);
+      
+      if (targetGate) {
+        commands.push({
+          id: crypto.randomUUID(),
+          type: 'move_to_gate',
+          targetPosition: targetGate.position,
+          targetSectorId: ship.sectorId,
+          targetGateId: targetGate.id,
+          targetGateSectorId: opportunity.buyStation.sectorId
+        });
+      }
+    }
 
     // Command 1: Move to buy station
     commands.push({
@@ -154,6 +188,23 @@ export class TradingAI {
       }
     });
 
+    // If sell station is in different sector, need to navigate there
+    if (opportunity.buyStation.sectorId !== opportunity.sellStation.sectorId) {
+      const buySector = this.gameState.sectors.find(s => s.id === opportunity.buyStation.sectorId);
+      const targetGate = buySector?.gates.find(g => g.targetSectorId === opportunity.sellStation.sectorId);
+      
+      if (targetGate) {
+        commands.push({
+          id: crypto.randomUUID(),
+          type: 'move_to_gate',
+          targetPosition: targetGate.position,
+          targetSectorId: opportunity.buyStation.sectorId,
+          targetGateId: targetGate.id,
+          targetGateSectorId: opportunity.sellStation.sectorId
+        });
+      }
+    }
+
     // Command 2: Move to sell station
     commands.push({
       id: crypto.randomUUID(),
@@ -169,7 +220,7 @@ export class TradingAI {
       }
     });
 
-    // Command 3: Continue auto-trading
+    // Command 3: Continue auto-trading only if we found a valid opportunity
     commands.push({
       id: crypto.randomUUID(),
       type: 'auto_trade',

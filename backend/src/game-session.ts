@@ -110,6 +110,14 @@ export class GameSession implements DurableObject {
       
       console.log(`Game created successfully: ${gameId}`);
       
+      // Process initial command queues for all ships
+      for (const ship of this.gameState.player.ships) {
+        if (ship.commandQueue.length > 0) {
+          console.log(`Processing initial command queue for ${ship.name}`);
+          await this.processShipCommandQueue(ship);
+        }
+      }
+      
       return new Response(JSON.stringify(this.gameState), {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -287,6 +295,12 @@ export class GameSession implements DurableObject {
           return await this.processTrade(message.shipId, message.tradeData);
         }
         break;
+        
+      case 'toggleAutoTrade':
+        if (message.shipId && message.enabled !== undefined) {
+          return await this.toggleAutoTrade(message.shipId, message.enabled);
+        }
+        break;
     }
 
     return { type: 'error', message: 'Invalid message type' };
@@ -333,6 +347,7 @@ export class GameSession implements DurableObject {
       
       case 'auto_trade':
         if (this.tradingAI) {
+          console.log(`Processing auto_trade command for ${ship.name}`);
           const tradingCommands = this.tradingAI.generateTradingCommands(ship);
           if (tradingCommands.length > 0) {
             ship.commandQueue.unshift(...tradingCommands);
@@ -340,7 +355,24 @@ export class GameSession implements DurableObject {
               id: crypto.randomUUID(),
               timestamp: this.gameState!.gameTime,
               type: 'ship_command',
-              message: `${ship.name} starting auto-trade sequence`,
+              message: `${ship.name} starting auto-trade sequence with ${tradingCommands.length} commands`,
+            });
+          } else {
+            console.log(`No trading opportunities found for ${ship.name}`);
+            // If continuous auto-trade is enabled, re-add the auto_trade command to queue
+            if (ship.isAutoTrading) {
+              ship.commandQueue.push({
+                id: crypto.randomUUID(),
+                type: 'auto_trade',
+                targetPosition: { x: 0, y: 0 },
+                metadata: { continuous: true }
+              });
+            }
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} found no trading opportunities, waiting...`,
             });
           }
         }
@@ -565,6 +597,7 @@ export class GameSession implements DurableObject {
       
       case 'auto_trade':
         if (this.tradingAI) {
+          console.log(`Executing auto_trade command for ${ship.name}`);
           const tradingCommands = this.tradingAI.generateTradingCommands(ship);
           if (tradingCommands.length > 0) {
             ship.commandQueue.unshift(...tradingCommands);
@@ -572,10 +605,29 @@ export class GameSession implements DurableObject {
               id: crypto.randomUUID(),
               timestamp: this.gameState!.gameTime,
               type: 'ship_command',
-              message: `${ship.name} continuing auto-trade`,
+              message: `${ship.name} continuing auto-trade with ${tradingCommands.length} commands`,
+            });
+          } else {
+            console.log(`No trading opportunities found for ${ship.name} during execution`);
+            // If continuous auto-trade is enabled, re-add the auto_trade command to queue
+            if (ship.isAutoTrading || nextCommand.metadata?.continuous) {
+              ship.commandQueue.push({
+                id: crypto.randomUUID(),
+                type: 'auto_trade',
+                targetPosition: { x: 0, y: 0 },
+                metadata: { continuous: true }
+              });
+            }
+            this.gameState!.events.push({
+              id: crypto.randomUUID(),
+              timestamp: this.gameState!.gameTime,
+              type: 'ship_command',
+              message: `${ship.name} found no trading opportunities, waiting...`,
             });
           }
         }
+        // Clear current command to allow next command to be processed
+        ship.currentCommand = undefined;
         break;
     }
 
@@ -632,14 +684,14 @@ export class GameSession implements DurableObject {
               {
                 wareId: 'energy-cells',
                 quantity: 1000,
-                buyPrice: 15,
-                sellPrice: 12
+                buyPrice: 0, // Trading station doesn't buy energy cells
+                sellPrice: 15 // Trading station sells energy cells to traders
               },
               {
-                wareId: 'silicon-wafers',
-                quantity: 500,
-                buyPrice: 25,
-                sellPrice: 20
+                wareId: 'microchips',
+                quantity: 0,
+                buyPrice: 95, // Trading station buys microchips from traders
+                sellPrice: 0 // Trading station doesn't sell microchips
               }
             ]
           },
@@ -648,7 +700,14 @@ export class GameSession implements DurableObject {
             name: 'Argon Shipyard',
             position: { x: -200, y: 150 },
             sectorId: 'argon-prime',
-            inventory: []
+            inventory: [
+              {
+                wareId: 'ore',
+                quantity: 0,
+                buyPrice: 11, // Shipyard buys ore for ship construction
+                sellPrice: 0 // Shipyard doesn't sell ore
+              }
+            ]
           }
         ],
         gates: [
@@ -678,8 +737,14 @@ export class GameSession implements DurableObject {
               {
                 wareId: 'ore',
                 quantity: 2000,
-                buyPrice: 8,
-                sellPrice: 5
+                buyPrice: 0, // Mining plant doesn't buy ore (it produces ore)
+                sellPrice: 8 // Mining plant sells ore to traders
+              },
+              {
+                wareId: 'energy-cells',
+                quantity: 0,
+                buyPrice: 18, // Mining plant buys energy cells for operations
+                sellPrice: 0 // Mining plant doesn't sell energy cells
               }
             ]
           }
@@ -706,8 +771,14 @@ export class GameSession implements DurableObject {
               {
                 wareId: 'microchips',
                 quantity: 300,
-                buyPrice: 100,
-                sellPrice: 80
+                buyPrice: 0, // Tech factory doesn't buy microchips (it produces them)
+                sellPrice: 85 // Tech factory sells microchips to traders
+              },
+              {
+                wareId: 'ore',
+                quantity: 0,
+                buyPrice: 10, // Tech factory buys ore for manufacturing
+                sellPrice: 0 // Tech factory doesn't sell ore
               }
             ]
           }
@@ -743,6 +814,7 @@ export class GameSession implements DurableObject {
       isMoving: false,
       cargo: [],
       maxCargo: 200,
+      isAutoTrading: true,
       commandQueue: [{
         id: crypto.randomUUID(),
         type: 'auto_trade',
@@ -755,7 +827,7 @@ export class GameSession implements DurableObject {
     const player: Player = {
       id: playerId,
       name: playerName,
-      credits: 10000,
+      credits: 25000, // Increased starting credits for better trading experience
       ships: [ship, cargoShip]
     };
 
@@ -858,8 +930,10 @@ export class GameSession implements DurableObject {
         return stationDistance < 30;
       });
       
+      console.log(`Ship ${ship.name} arrival check: nearbyStation=${nearbyStation?.name}, currentCommand=${ship.currentCommand?.type}, hasMetadata=${!!ship.currentCommand?.metadata}`);
       if (nearbyStation && ship.currentCommand?.type === 'dock_at_station') {
         // Execute trade if this is a trading command
+        console.log(`Calling executeAutoTrade for ${ship.name} at ${nearbyStation.name}`);
         await this.executeAutoTrade(ship, nearbyStation, ship.currentCommand);
       }
       
@@ -885,9 +959,60 @@ export class GameSession implements DurableObject {
 
     // If ship is not moving and has commands in queue, execute next command
     if (!ship.isMoving && ship.commandQueue.length > 0 && !ship.currentCommand) {
+      console.log(`Processing command queue for ${ship.name}: ${ship.commandQueue.length} commands in queue`);
       await this.executeNextQueueCommand(ship);
       await this.saveGameState(); // Ensure UI gets updated queue state
     }
+  }
+
+  private async toggleAutoTrade(shipId: string, enabled: boolean): Promise<WebSocketResponse> {
+    const ship = this.gameState!.player.ships.find(s => s.id === shipId);
+    if (!ship) {
+      return { type: 'error', message: 'Ship not found' };
+    }
+
+    ship.isAutoTrading = enabled;
+
+    if (enabled) {
+      // Clear entire command queue when enabling auto-trade
+      ship.commandQueue = [];
+      ship.currentCommand = undefined;
+      
+      // Start auto trading by adding auto_trade command to queue
+      const autoTradeCommand: ShipQueueCommand = {
+        id: crypto.randomUUID(),
+        type: 'auto_trade',
+        targetPosition: { x: 0, y: 0 },
+        metadata: { continuous: true }
+      };
+      
+      // Add to beginning of queue
+      ship.commandQueue.unshift(autoTradeCommand);
+      
+      // Immediately start processing the auto-trade command
+      await this.processShipCommandQueue(ship);
+      
+      this.gameState!.events.push({
+        id: crypto.randomUUID(),
+        timestamp: this.gameState!.gameTime,
+        type: 'ship_command',
+        message: `${ship.name} auto-trade enabled - command queue cleared`,
+      });
+    } else {
+      // Clear entire command queue when disabling auto-trade
+      ship.commandQueue = [];
+      ship.currentCommand = undefined;
+      
+      this.gameState!.events.push({
+        id: crypto.randomUUID(),
+        timestamp: this.gameState!.gameTime,
+        type: 'ship_command',
+        message: `${ship.name} auto-trade disabled - command queue cleared`,
+      });
+    }
+
+    await this.saveGameState();
+    return { type: 'commandResult', shipId, message: `Auto-trade ${enabled ? 'enabled' : 'disabled'}` };
   }
 
   private async saveGameState(): Promise<void> {
@@ -897,7 +1022,11 @@ export class GameSession implements DurableObject {
   }
 
   private async executeAutoTrade(ship: Ship, station: Station, command: ShipQueueCommand): Promise<void> {
-    if (!this.gameState || !command.metadata) return;
+    console.log(`executeAutoTrade called for ${ship.name} at ${station.name}`);
+    if (!this.gameState || !command.metadata) {
+      console.log(`executeAutoTrade failed: gameState=${!!this.gameState}, metadata=${!!command.metadata}`);
+      return;
+    }
 
     const tradeType = command.metadata.tradeType as string;
     const wareId = command.metadata.wareId as string;
@@ -906,14 +1035,25 @@ export class GameSession implements DurableObject {
     if (!tradeType || !wareId || !quantity) return;
 
     const stationInventory = station.inventory.find(inv => inv.wareId === wareId);
-    if (!stationInventory) return;
+    if (!stationInventory) {
+      console.log(`executeAutoTrade failed: station ${station.name} doesn't have ${wareId}`);
+      return;
+    }
+    
+    console.log(`Executing ${tradeType} trade: ${quantity} ${wareId} at ${station.name}`);
+    console.log(`Station inventory: quantity=${stationInventory.quantity}, buyPrice=${stationInventory.buyPrice}, sellPrice=${stationInventory.sellPrice}`);
 
     try {
       if (tradeType === 'buy') {
         // Buy from station (station selling to us)
         const cost = stationInventory.sellPrice * quantity;
+        console.log(`Buy attempt: cost=${cost}, playerCredits=${this.gameState.player.credits}, stationQuantity=${stationInventory.quantity}, requestedQuantity=${quantity}`);
+        
         if (this.gameState.player.credits >= cost && stationInventory.quantity >= quantity) {
           // Execute purchase
+          const oldCredits = this.gameState.player.credits;
+          const oldStationQuantity = stationInventory.quantity;
+          
           this.gameState.player.credits -= cost;
           stationInventory.quantity -= quantity;
           
@@ -925,19 +1065,29 @@ export class GameSession implements DurableObject {
             ship.cargo.push({ wareId, quantity });
           }
 
+          console.log(`BUY SUCCESS: Credits ${oldCredits} → ${this.gameState.player.credits}, Station stock ${oldStationQuantity} → ${stationInventory.quantity}, Ship cargo +${quantity}`);
+
           this.gameState.events.push({
             id: crypto.randomUUID(),
             timestamp: this.gameState.gameTime,
             type: 'trade',
             message: `${ship.name} bought ${quantity} ${wareId} from ${station.name} for ${cost} credits`,
           });
+        } else {
+          console.log(`BUY FAILED: Insufficient credits or stock. Need ${cost} credits (have ${this.gameState.player.credits}), need ${quantity} items (station has ${stationInventory.quantity})`);
         }
       } else if (tradeType === 'sell') {
         // Sell to station (station buying from us)
         const shipCargo = ship.cargo.find(c => c.wareId === wareId);
+        const revenue = stationInventory.buyPrice * quantity;
+        console.log(`Sell attempt: revenue=${revenue}, shipCargo=${shipCargo?.quantity || 0}, requestedQuantity=${quantity}`);
+        
         if (shipCargo && shipCargo.quantity >= quantity) {
           // Execute sale
-          const revenue = stationInventory.buyPrice * quantity;
+          const oldCredits = this.gameState.player.credits;
+          const oldShipCargo = shipCargo.quantity;
+          const oldStationQuantity = stationInventory.quantity;
+          
           this.gameState.player.credits += revenue;
           stationInventory.quantity += quantity;
           
@@ -947,12 +1097,16 @@ export class GameSession implements DurableObject {
             ship.cargo = ship.cargo.filter(c => c.wareId !== wareId);
           }
 
+          console.log(`SELL SUCCESS: Credits ${oldCredits} → ${this.gameState.player.credits}, Ship cargo ${oldShipCargo} → ${shipCargo.quantity <= 0 ? 0 : shipCargo.quantity}, Station stock ${oldStationQuantity} → ${stationInventory.quantity}`);
+
           this.gameState.events.push({
             id: crypto.randomUUID(),
             timestamp: this.gameState.gameTime,
             type: 'trade',
             message: `${ship.name} sold ${quantity} ${wareId} to ${station.name} for ${revenue} credits`,
           });
+        } else {
+          console.log(`SELL FAILED: Insufficient cargo. Ship has ${shipCargo?.quantity || 0}, needs ${quantity}`);
         }
       }
     } catch (error) {

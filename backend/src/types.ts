@@ -15,6 +15,7 @@ export interface Ship {
   maxCargo: number;
   commandQueue: ShipQueueCommand[]; // Queue of commands to execute
   currentCommand?: ShipQueueCommand; // Currently executing command
+  isAutoTrading?: boolean; // Whether ship is in auto-trade mode
 }
 
 export interface ShipCargo {
@@ -77,12 +78,13 @@ export interface GameEvent {
 
 // WebSocket Message Types
 export interface WebSocketMessage {
-  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState';
+  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState' | 'toggleAutoTrade';
   shipId?: string;
   command?: ShipCommand;
   targetPosition?: Vector2;
   targetSectorId?: string;
   tradeData?: TradeData;
+  enabled?: boolean; // For toggleAutoTrade
   data?: Record<string, unknown>;
 }
 
