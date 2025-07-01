@@ -9,9 +9,9 @@ test.describe('Post-Gate Movement', () => {
     await page.click('button:has-text("Create Game")');
     await page.waitForSelector('text=Game Status');
     
-    // Select ship
-    const shipInfo = page.locator('.ship-item').first();
-    await shipInfo.click();
+    // Select Discovery ship (not the auto-trading Trader ship)
+    const discoveryShip = page.locator('.ship-item:has-text("Discovery")');
+    await discoveryShip.click();
     
     // Switch to Three's Company view
     await page.click('button:has-text("Three\'s Company")');
