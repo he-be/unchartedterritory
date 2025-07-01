@@ -9,7 +9,7 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // Click on the ship to select it
-    const shipInfo = page.locator('.ship-item').first();
+    const shipInfo = page.locator('.ship-item:has-text("Discovery")');
     await shipInfo.click();
     
     // Verify ship is selected (should have blue border)
@@ -46,7 +46,7 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('.ship-item').first();
+    const shipInfo = page.locator('.ship-item:has-text("Discovery")');
     await shipInfo.click();
     
     // Click on gate - ship should move to gate and auto-jump
@@ -98,7 +98,7 @@ test.describe('Sector Navigation', () => {
     await page.waitForSelector('text=Game Status');
     
     // First move Discovery to Three's Company
-    const shipInfo = page.locator('.ship-item').first();
+    const shipInfo = page.locator('.ship-item:has-text("Discovery")');
     await shipInfo.click();
     
     // Switch to Three's Company view and move ship there

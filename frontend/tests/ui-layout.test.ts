@@ -46,7 +46,7 @@ test.describe('UI Layout and Design', () => {
     // Check ships section in left pane
     const shipsCard = page.locator('.left-pane .card').first();
     await expect(shipsCard).toBeVisible();
-    await expect(shipsCard.locator('h3')).toHaveText('Ships (1)');
+    await expect(shipsCard.locator('h3')).toHaveText('Ships (2)');
     
     // Check ship item styling
     const shipItem = page.locator('.ship-item').first();

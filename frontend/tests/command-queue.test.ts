@@ -12,7 +12,7 @@ test.describe('Command Queue Display', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('.ship-item').first();
+    const shipInfo = page.locator('.ship-item:has-text("Discovery")');
     await shipInfo.click();
     
     // Switch to Elena's Fortune view (requires multi-hop)
@@ -46,7 +46,7 @@ test.describe('Command Queue Display', () => {
     await page.waitForSelector('text=Game Status');
     
     // Select ship
-    const shipInfo = page.locator('.ship-item').first();
+    const shipInfo = page.locator('.ship-item:has-text("Discovery")');
     await shipInfo.click();
     
     // Move to a nearby gate first

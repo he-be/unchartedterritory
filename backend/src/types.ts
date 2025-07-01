@@ -15,6 +15,7 @@ export interface Ship {
   maxCargo: number;
   commandQueue: ShipQueueCommand[]; // Queue of commands to execute
   currentCommand?: ShipQueueCommand; // Currently executing command
+  isAutoTrading?: boolean; // Whether ship is in auto-trade mode
 }
 
 export interface ShipCargo {
@@ -70,19 +71,20 @@ export interface GameState {
 export interface GameEvent {
   id: string;
   timestamp: number;
-  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command' | 'sector_changed';
+  type: 'ship_moved' | 'trade_completed' | 'sector_discovered' | 'ship_command' | 'sector_changed' | 'trade';
   message: string;
   data?: Record<string, unknown>;
 }
 
 // WebSocket Message Types
 export interface WebSocketMessage {
-  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState';
+  type: 'shipCommand' | 'shipAction' | 'trade' | 'ping' | 'requestState' | 'toggleAutoTrade';
   shipId?: string;
   command?: ShipCommand;
   targetPosition?: Vector2;
   targetSectorId?: string;
   tradeData?: TradeData;
+  enabled?: boolean; // For toggleAutoTrade
   data?: Record<string, unknown>;
 }
 
@@ -96,14 +98,14 @@ export interface WebSocketResponse {
 }
 
 export interface ShipCommand {
-  type: 'move' | 'dock_at_station' | 'auto_move';
+  type: 'move' | 'dock_at_station' | 'auto_move' | 'auto_trade';
   targetPosition?: Vector2;
   stationId?: string;
 }
 
 export interface ShipQueueCommand {
   id: string;
-  type: 'move_to_position' | 'move_to_gate' | 'dock_at_station';
+  type: 'move_to_position' | 'move_to_gate' | 'dock_at_station' | 'auto_trade';
   targetPosition: Vector2;
   targetSectorId?: string;
   targetGateId?: string;
