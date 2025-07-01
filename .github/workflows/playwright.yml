@@ -26,12 +26,14 @@ jobs:
       with:
         path: backend/node_modules
         key: backend-deps-${{ hashFiles('backend/package-lock.json') }}
+        base: /tmp/cache
           
     - name: Cache frontend node_modules
       uses: corca-ai/local-cache@v2
       with:
         path: frontend/node_modules
         key: frontend-deps-${{ hashFiles('frontend/package-lock.json') }}
+        base: /tmp/cache
           
     - name: Check if Playwright browsers exist locally
       id: check-browsers
