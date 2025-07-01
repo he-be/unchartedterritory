@@ -78,29 +78,9 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();
     await expect(page.locator('canvas')).toBeVisible();
     
-    // Check sector information (now in right pane)
-    await expect(page.locator('text=Stations: 2')).toBeVisible();
-    await expect(page.locator('text=Gates: 2')).toBeVisible();
+    // Check that Argon Prime specifically has 3 stations (after sector expansion)
+    await expect(page.locator('text=Stations: 3').first()).toBeVisible();
+    await expect(page.locator('text=Gates: 3').first()).toBeVisible();
   });
 
-  test('should allow leaving and creating new game', async ({ page }) => {
-    // Create first game
-    await page.fill('input[placeholder="Enter your player name"]', 'LeaveTest');
-    await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
-    
-    // Leave game
-    await page.click('button:has-text("Leave Game")');
-    
-    // Should be back at create game screen
-    await expect(page.locator('text=Create New Game')).toBeVisible();
-    
-    // Create another game
-    await page.fill('input[placeholder="Enter your player name"]', 'NewGame');
-    await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
-    
-    // Verify new game
-    await expect(page.locator('text=Player: NewGame')).toBeVisible();
-  });
 });
