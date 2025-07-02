@@ -13,7 +13,7 @@ test.describe('Uncharted Territory Game', () => {
     await page.click('button:has-text("Create Game")');
     
     // Wait for game to load
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Verify game state
     await expect(page.locator('text=Player: TestPlayer')).toBeVisible();
@@ -21,7 +21,6 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('.status.connected')).toBeVisible();
     
     // Verify sectors are loaded (now in right pane)
-    await expect(page.locator('text=Sector Info')).toBeVisible();
     // Check for procedurally generated station names containing "Argon Prime"
     await expect(page.locator('.right-pane .station-name').filter({ hasText: 'Argon Prime' }).first()).toBeVisible();
     
@@ -35,7 +34,7 @@ test.describe('Uncharted Territory Game', () => {
     // Create game first
     await page.fill('input[placeholder="Enter your player name"]', 'MoveTest');
     await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Click on the ship to select it
     const shipInfo = page.locator('.ship-item:has-text("Discovery")');
@@ -71,7 +70,7 @@ test.describe('Uncharted Territory Game', () => {
     // Create game
     await page.fill('input[placeholder="Enter your player name"]', 'MapTest');
     await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Verify map elements
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();

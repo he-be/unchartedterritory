@@ -13,6 +13,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
   const [currentViewSectorId, setCurrentViewSectorId] = useState<string | null>(null);
+  const [expandedStationId, setExpandedStationId] = useState<string | null>(null);
 
   const handleCreateGame = async () => {
     if (!playerName.trim()) {
@@ -68,11 +69,6 @@ const App: React.FC = () => {
     };
   }, [wsService]);
 
-  const formatGameTime = (gameTime: number) => {
-    const hours = Math.floor(gameTime / 3600000);
-    const minutes = Math.floor((gameTime % 3600000) / 60000);
-    return `${hours}h ${minutes}m`;
-  };
 
   const handleShipCommand = (shipId: string, targetPosition: Vector2, targetSectorId?: string) => {
     if (!wsService) {
@@ -94,6 +90,11 @@ const App: React.FC = () => {
 
   const handleSectorNavigation = (sectorId: string) => {
     setCurrentViewSectorId(sectorId);
+    setExpandedStationId(null); // Close any expanded station when changing sectors
+  };
+
+  const handleToggleStationDetails = (stationId: string) => {
+    setExpandedStationId(expandedStationId === stationId ? null : stationId);
   };
 
   const handleToggleAutoTrade = (shipId: string, enabled: boolean) => {
@@ -222,17 +223,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Game Status in left pane */}
-            <div className="card">
-              <div className="card-header">
-                <h3>Game Status</h3>
-              </div>
-              <div className="card-content">
-                <div className="ship-details">Player: {gameState.player.name}</div>
-                <div className="ship-details">Game Time: {formatGameTime(gameState.gameTime)}</div>
-                <div className="ship-details">Current Sector: {gameState.sectors.find(s => s.id === gameState.currentSectorId)?.name}</div>
-              </div>
-            </div>
           </div>
 
           {/* Center Pane - Map */}
@@ -272,29 +262,60 @@ const App: React.FC = () => {
               <div className="card-content">
                 {gameState.sectors.find(s => s.id === (currentViewSectorId || gameState.currentSectorId))?.stations.map(station => (
                   <div key={station.id} className="station-item">
-                    <div className="station-name">{station.name}</div>
+                    <div 
+                      className="station-name clickable"
+                      onClick={() => handleToggleStationDetails(station.id)}
+                      style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      {station.name} {expandedStationId === station.id ? '▼' : '▶'}
+                    </div>
                     <div className="station-details">Position: ({Math.round(station.position.x)}, {Math.round(station.position.y)})</div>
                     <div className="station-details">Inventory: {station.inventory.length} items</div>
+                    
+                    {expandedStationId === station.id && (
+                      <div className="station-trade-details">
+                        <div style={{ marginTop: '10px' }}>
+                          <h4 style={{ margin: '5px 0', fontSize: '14px', color: '#4a9eff' }}>Buy List (Station Sells)</h4>
+                          <div className="trade-list">
+                            {station.inventory.filter(item => item.sellPrice > 0).length > 0 ? (
+                              station.inventory.filter(item => item.sellPrice > 0).map(item => (
+                                <div key={item.wareId} className="trade-item">
+                                  <span className="ware-name">{item.wareId}</span>
+                                  <span className="trade-info">
+                                    {item.quantity} units @ {item.sellPrice} credits
+                                  </span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="trade-item">No items for sale</div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div style={{ marginTop: '10px' }}>
+                          <h4 style={{ margin: '5px 0', fontSize: '14px', color: '#ff6b6b' }}>Sell List (Station Buys)</h4>
+                          <div className="trade-list">
+                            {station.inventory.filter(item => item.buyPrice > 0).length > 0 ? (
+                              station.inventory.filter(item => item.buyPrice > 0).map(item => (
+                                <div key={item.wareId} className="trade-item">
+                                  <span className="ware-name">{item.wareId}</span>
+                                  <span className="trade-info">
+                                    Buying @ {item.buyPrice} credits
+                                  </span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="trade-item">Not buying any items</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )) || <div className="station-details">No stations in this sector</div>}
               </div>
             </div>
 
-            <div className="card">
-              <div className="card-header">
-                <h3>Sector Info</h3>
-              </div>
-              <div className="card-content">
-                {gameState.sectors.map(sector => (
-                  <div key={sector.id} className={sector.id === (currentViewSectorId || gameState.currentSectorId) ? "station-item" : "station-details"}>
-                    <div className="station-name">{sector.name}</div>
-                    <div className="station-details">Coordinates: ({sector.coordinates.x}, {sector.coordinates.y})</div>
-                    <div className="station-details">Stations: {sector.stations.length}</div>
-                    <div className="station-details">Gates: {sector.gates.length}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
           </div>
         </div>

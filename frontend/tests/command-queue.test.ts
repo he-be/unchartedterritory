@@ -9,7 +9,7 @@ test.describe('Command Queue Display', () => {
     // Create game
     await page.fill('input[placeholder="Enter your player name"]', 'QueueTest');
     await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Select ship
     const shipInfo = page.locator('.ship-item:has-text("Discovery")');
@@ -43,7 +43,7 @@ test.describe('Command Queue Display', () => {
     // Create game
     await page.fill('input[placeholder="Enter your player name"]', 'QueueUpdateTest');
     await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Select ship
     const shipInfo = page.locator('.ship-item:has-text("Discovery")');

@@ -217,6 +217,43 @@ body {
   color: var(--text-secondary);
 }
 
+.station-trade-details {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.trade-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.trade-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-secondary);
+  font-size: 11px;
+}
+
+.trade-item:last-child {
+  border-bottom: none;
+}
+
+.ware-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.trade-info {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
 /* Buttons */
 .button {
   background-color: var(--bg-tertiary);

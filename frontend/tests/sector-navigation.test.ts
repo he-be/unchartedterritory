@@ -6,7 +6,7 @@ test.describe('Sector Navigation', () => {
     await page.goto('http://localhost:8787/');
     await page.fill('input[placeholder="Enter your player name"]', 'NavTest');
     await page.click('button:has-text("Create Game")');
-    await page.waitForSelector('text=Game Status');
+    await page.waitForSelector('.game-layout');
     
     // Click on the ship to select it
     const shipInfo = page.locator('.ship-item:has-text("Discovery")');
