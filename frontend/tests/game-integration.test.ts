@@ -21,8 +21,8 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('.status.connected')).toBeVisible();
     
     // Verify sectors are loaded (now in right pane)
-    // Check for procedurally generated station names containing "Argon Prime"
-    await expect(page.locator('.right-pane .station-name').filter({ hasText: 'Argon Prime' }).first()).toBeVisible();
+    // Check that stations exist (procedurally generated, so we don't check specific names)
+    await expect(page.locator('.right-pane .station-name').first()).toBeVisible();
     
     // Verify ships exist (Discovery + Trader cargo ship)
     await expect(page.locator('text=Ships (2)')).toBeVisible();
