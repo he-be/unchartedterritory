@@ -13,6 +13,8 @@ export interface TradeOpportunity {
 
 export class TradingAI {
   private gameState: GameState;
+  private recentTrades: Map<string, { stationId: string; timestamp: number }[]> = new Map();
+  private readonly TRADE_COOLDOWN_MS = 30000; // 30 seconds cooldown per station
 
   constructor(gameState: GameState) {
     this.gameState = gameState;
@@ -68,6 +70,39 @@ export class TradingAI {
   }
 
   /**
+   * Check if a station is on cooldown for a ship
+   */
+  private isStationOnCooldown(shipId: string, stationId: string): boolean {
+    const shipTrades = this.recentTrades.get(shipId) || [];
+    const now = this.gameState.gameTime;
+    
+    const recentTrade = shipTrades.find(trade => 
+      trade.stationId === stationId && 
+      (now - trade.timestamp) < this.TRADE_COOLDOWN_MS
+    );
+    
+    return !!recentTrade;
+  }
+  
+  /**
+   * Record a trade for cooldown tracking
+   */
+  private recordTrade(shipId: string, stationId: string): void {
+    const shipTrades = this.recentTrades.get(shipId) || [];
+    const now = this.gameState.gameTime;
+    
+    // Add new trade record
+    shipTrades.push({ stationId, timestamp: now });
+    
+    // Clean up old trades (older than cooldown period)
+    const filteredTrades = shipTrades.filter(trade => 
+      (now - trade.timestamp) < this.TRADE_COOLDOWN_MS
+    );
+    
+    this.recentTrades.set(shipId, filteredTrades);
+  }
+
+  /**
    * Find best buy/sell pair for a specific ware
    */
   private findBestTradeForWare(
@@ -86,6 +121,11 @@ export class TradingAI {
     for (const [stationId, inventory] of stationPrices) {
       const station = this.findStationById(stationId);
       if (!station) continue;
+      
+      // Skip stations on cooldown
+      if (this.isStationOnCooldown(ship.id, stationId)) {
+        continue;
+      }
 
       const wareItem = inventory.find(item => item.wareId === wareId);
       if (!wareItem) continue;
@@ -125,6 +165,10 @@ export class TradingAI {
       );
       
       if (maxQuantity > 0 && profit > 0) {
+        // Record trades for both stations to prevent immediate return
+        this.recordTrade(ship.id, buyStation.id);
+        this.recordTrade(ship.id, sellStation.id);
+        
         return {
           wareId,
           buyStation,
@@ -154,6 +198,11 @@ export class TradingAI {
       // Find all stations that buy this ware
       for (const sector of this.gameState.sectors) {
         for (const station of sector.stations) {
+          // Skip stations on cooldown
+          if (this.isStationOnCooldown(ship.id, station.id)) {
+            continue;
+          }
+          
           const inventory = station.inventory.find(inv => inv.wareId === cargoItem.wareId && inv.buyPrice > 0);
           if (inventory) {
             const maxSellQuantity = cargoItem.quantity; // Sell all cargo we have
@@ -175,6 +224,11 @@ export class TradingAI {
           }
         }
       }
+    }
+    
+    // Record the sell trade if we found an opportunity
+    if (bestOpportunity) {
+      this.recordTrade(ship.id, bestOpportunity.sellStation.id);
     }
 
     return bestOpportunity;
@@ -354,5 +408,12 @@ export class TradingAI {
    */
   updateGameState(gameState: GameState): void {
     this.gameState = gameState;
+  }
+  
+  /**
+   * Clear trade history for a ship (useful for debugging or resetting)
+   */
+  clearTradeHistory(shipId: string): void {
+    this.recentTrades.delete(shipId);
   }
 }
