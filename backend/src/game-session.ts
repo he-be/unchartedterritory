@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { TradingAI } from './trading-ai';
 import { SectorGraphManager } from './sector-graph';
+import { generateStationsForSector } from './station-generator';
 
 // Game loop configuration
 const TICK_RATE_HZ = 30;
@@ -232,6 +233,12 @@ export class GameSession implements DurableObject {
 
     const SHIP_SPEED = 60; // Units per second (3x speed for faster movement)
     const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
+
+    // Periodically regenerate market inventory (every 30 seconds of game time)
+    const MARKET_REGEN_INTERVAL = 30000; // 30 seconds
+    if (this.gameState.gameTime % MARKET_REGEN_INTERVAL < TICK_INTERVAL_MS) {
+      this.regenerateMarketInventory();
+    }
 
     // Update ship positions and process commands
     for (const ship of this.gameState.player.ships) {
@@ -1010,7 +1017,13 @@ export class GameSession implements DurableObject {
         id: metadata.id,
         name: metadata.name,
         coordinates: metadata.coordinates,
-        stations: this.createStationsForSector(metadata.id),
+        stations: generateStationsForSector({
+          minStations: 2,
+          maxStations: 3,
+          sectorId: metadata.id,
+          sectorName: metadata.name,
+          seed: `${metadata.id}-stations` // Deterministic generation based on sector
+        }),
         gates: this.sectorGraph.generateGatesForSector(metadata.id)
       };
       sectors.push(sector);
@@ -1020,145 +1033,29 @@ export class GameSession implements DurableObject {
   }
 
   /**
-   * Create stations for a specific sector
+   * Regenerate market inventory to prevent trading opportunities from running out
    */
-  private createStationsForSector(sectorId: string): Station[] {
-    // Define stations for each sector based on their economic purpose
-    switch (sectorId) {
-      case 'argon-prime':
-        return [
-          {
-            id: 'tech-factory-1',
-            name: 'Advanced Tech Factory',
-            position: { x: 150, y: -100 },
-            sectorId: 'argon-prime',
-            inventory: [
-              { wareId: 'microchips', quantity: 300, buyPrice: 0, sellPrice: 85 },
-              { wareId: 'ore', quantity: 0, buyPrice: 10, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'research-lab-1',
-            name: 'Technology Research Laboratory',
-            position: { x: -200, y: 200 },
-            sectorId: 'argon-prime',
-            inventory: [
-              { wareId: 'tech-blueprints', quantity: 150, buyPrice: 0, sellPrice: 400 },
-              { wareId: 'microchips', quantity: 0, buyPrice: 88, sellPrice: 0 },
-              { wareId: 'research-data', quantity: 0, buyPrice: 230, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'financial-center-1',
-            name: 'Argon Financial Center',
-            position: { x: 300, y: -200 },
-            sectorId: 'argon-prime',
-            inventory: [
-              { wareId: 'financial-services', quantity: 1000, buyPrice: 0, sellPrice: 50 },
-              { wareId: 'luxury-goods', quantity: 0, buyPrice: 305, sellPrice: 0 },
-              { wareId: 'art-pieces', quantity: 0, buyPrice: 510, sellPrice: 0 }
-            ]
+  private regenerateMarketInventory(): void {
+    if (!this.gameState) return;
+
+    console.log('🔄 Regenerating market inventory...');
+    
+    for (const sector of this.gameState.sectors) {
+      for (const station of sector.stations) {
+        for (const inventory of station.inventory) {
+          // Slowly regenerate producer inventory (what stations sell)
+          if (inventory.sellPrice > 0 && inventory.quantity < 1000) {
+            const regenAmount = Math.floor(Math.random() * 100) + 50; // 50-150 units
+            inventory.quantity = Math.min(inventory.quantity + regenAmount, 1000);
           }
-        ];
-      
-      case 'three-worlds':
-        return [
-          {
-            id: 'trading-station-1',
-            name: 'Trading Station Alpha',
-            position: { x: 100, y: 100 },
-            sectorId: 'three-worlds',
-            inventory: [
-              { wareId: 'energy-cells', quantity: 1000, buyPrice: 0, sellPrice: 15 },
-              { wareId: 'microchips', quantity: 0, buyPrice: 95, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'shipyard-1',
-            name: 'Three Worlds Shipyard',
-            position: { x: -200, y: 150 },
-            sectorId: 'three-worlds',
-            inventory: [
-              { wareId: 'ore', quantity: 0, buyPrice: 11, sellPrice: 0 }
-            ]
-          }
-        ];
-      
-      case 'power-circle':
-        return [
-          {
-            id: 'mining-station-1',
-            name: 'Ore Processing Plant',
-            position: { x: 0, y: 200 },
-            sectorId: 'power-circle',
-            inventory: [
-              { wareId: 'ore', quantity: 2000, buyPrice: 0, sellPrice: 8 },
-              { wareId: 'energy-cells', quantity: 0, buyPrice: 18, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'equipment-repair-1',
-            name: 'Mining Equipment Repair Station',
-            position: { x: -250, y: -100 },
-            sectorId: 'power-circle',
-            inventory: [
-              { wareId: 'repair-services', quantity: 300, buyPrice: 0, sellPrice: 90 },
-              { wareId: 'farm-equipment', quantity: 0, buyPrice: 155, sellPrice: 0 },
-              { wareId: 'refined-metals', quantity: 0, buyPrice: 63, sellPrice: 0 }
-            ]
-          }
-        ];
-      
-      case 'herrons-nebula':
-        return [
-          {
-            id: 'gas-mining-1',
-            name: 'Nebula Gas Extraction',
-            position: { x: -100, y: -200 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              { wareId: 'helium', quantity: 2500, buyPrice: 0, sellPrice: 35 },
-              { wareId: 'energy-cells', quantity: 0, buyPrice: 22, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'gas-processing-1',
-            name: 'Advanced Gas Processing Facility',
-            position: { x: 200, y: 150 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              { wareId: 'noble-gases', quantity: 800, buyPrice: 0, sellPrice: 95 },
-              { wareId: 'helium', quantity: 0, buyPrice: 38, sellPrice: 0 },
-              { wareId: 'energy-cells', quantity: 0, buyPrice: 24, sellPrice: 0 }
-            ]
-          },
-          {
-            id: 'research-outpost-1',
-            name: 'Nebula Research Outpost',
-            position: { x: 50, y: 300 },
-            sectorId: 'herrons-nebula',
-            inventory: [
-              { wareId: 'research-data', quantity: 200, buyPrice: 0, sellPrice: 220 },
-              { wareId: 'food-rations', quantity: 0, buyPrice: 28, sellPrice: 0 },
-              { wareId: 'medical-supplies', quantity: 0, buyPrice: 82, sellPrice: 0 }
-            ]
-          }
-        ];
-      
-      // Add basic stations for other sectors
-      default:
-        return [
-          {
-            id: `station-${sectorId}-1`,
-            name: `${this.sectorGraph.getSectorMetadata(sectorId)?.name || sectorId} Station`,
-            position: { x: 0, y: 0 },
-            sectorId: sectorId,
-            inventory: [
-              { wareId: 'energy-cells', quantity: 500, buyPrice: 0, sellPrice: 20 }
-            ]
-          }
-        ];
+          
+          // Don't regenerate consumed goods (inventory.buyPrice > 0 with quantity 0 is normal)
+          // Those represent demand for goods that traders can fulfill
+        }
+      }
     }
+    
+    console.log('✅ Market inventory regenerated');
   }
 
   /**

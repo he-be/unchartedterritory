@@ -142,10 +142,104 @@ export class TradingAI {
   }
 
   /**
+   * Find sell opportunity for cargo already on the ship
+   */
+  private findSellOpportunityForCargo(ship: Ship): TradeOpportunity | null {
+    if (ship.cargo.length === 0) return null;
+
+    let bestOpportunity: TradeOpportunity | null = null;
+    let bestTotalProfit = 0;
+
+    for (const cargoItem of ship.cargo) {
+      // Find all stations that buy this ware
+      for (const sector of this.gameState.sectors) {
+        for (const station of sector.stations) {
+          const inventory = station.inventory.find(inv => inv.wareId === cargoItem.wareId && inv.buyPrice > 0);
+          if (inventory) {
+            const maxSellQuantity = cargoItem.quantity; // Sell all cargo we have
+            const totalProfit = inventory.buyPrice * maxSellQuantity;
+            
+            if (totalProfit > bestTotalProfit) {
+              bestOpportunity = {
+                wareId: cargoItem.wareId,
+                buyStation: station, // Not used for sell-only
+                sellStation: station,
+                buyPrice: 0, // Not used for sell-only
+                sellPrice: inventory.buyPrice,
+                profit: inventory.buyPrice, // Since we already own the goods
+                maxQuantity: maxSellQuantity,
+                totalProfit
+              };
+              bestTotalProfit = totalProfit;
+            }
+          }
+        }
+      }
+    }
+
+    return bestOpportunity;
+  }
+
+  /**
+   * Generate commands for selling existing cargo
+   */
+  private generateSellCommands(ship: Ship, sellOpportunity: TradeOpportunity): ShipQueueCommand[] {
+    const commands: ShipQueueCommand[] = [];
+
+    // Navigate to sell station if not already there
+    if (ship.sectorId !== sellOpportunity.sellStation.sectorId) {
+      const currentSector = this.gameState.sectors.find(s => s.id === ship.sectorId);
+      const targetGate = currentSector?.gates.find(g => g.targetSectorId === sellOpportunity.sellStation.sectorId);
+      
+      if (targetGate) {
+        commands.push({
+          id: crypto.randomUUID(),
+          type: 'move_to_gate',
+          targetPosition: targetGate.position,
+          targetSectorId: ship.sectorId,
+          targetGateId: targetGate.id,
+          targetGateSectorId: sellOpportunity.sellStation.sectorId
+        });
+      }
+    }
+
+    // Sell command
+    commands.push({
+      id: crypto.randomUUID(),
+      type: 'dock_at_station',
+      targetPosition: sellOpportunity.sellStation.position,
+      stationId: sellOpportunity.sellStation.id,
+      metadata: {
+        tradeType: 'sell',
+        wareId: sellOpportunity.wareId,
+        quantity: sellOpportunity.maxQuantity
+      }
+    });
+
+    // Re-add auto-trade command to continue trading after selling
+    commands.push({
+      id: crypto.randomUUID(),
+      type: 'auto_trade',
+      targetPosition: { x: 0, y: 0 },
+      metadata: { continuous: true }
+    });
+
+    return commands;
+  }
+
+  /**
    * Generate trading commands for a ship
    */
   generateTradingCommands(ship: Ship): ShipQueueCommand[] {
     console.log(`Generating trading commands for ${ship.name} in sector ${ship.sectorId}`);
+    
+    // If ship has cargo, prioritize selling first
+    const sellOpportunity = this.findSellOpportunityForCargo(ship);
+    if (sellOpportunity) {
+      console.log(`Ship ${ship.name} has cargo, prioritizing sell: ${sellOpportunity.wareId} to ${sellOpportunity.sellStation.name} for ${sellOpportunity.totalProfit} profit`);
+      return this.generateSellCommands(ship, sellOpportunity);
+    }
+    
     const opportunity = this.findBestTradeOpportunity(ship);
     if (!opportunity) {
       console.log(`No valid trading opportunity found for ${ship.name} - stopping auto-trade`);
