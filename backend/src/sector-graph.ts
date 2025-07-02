@@ -28,83 +28,83 @@ export class SectorGraphManager {
    */
   private createSectorGraph(): SectorGraph {
     const connections: SectorConnection[] = [
-      // Three Worlds connections
-      { fromSectorId: 'three-worlds', toSectorId: 'power-circle', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'three-worlds', toSectorId: 'cloudbase-nw', gatePosition: { x: 0, y: 400 } },
+      // Three Worlds connections (2 gates: East, South)
+      { fromSectorId: 'three-worlds', toSectorId: 'power-circle', gatePosition: { x: 400, y: 0 } },      // East
+      { fromSectorId: 'three-worlds', toSectorId: 'cloudbase-nw', gatePosition: { x: 0, y: 400 } },     // South
       
-      // Power Circle connections
-      { fromSectorId: 'power-circle', toSectorId: 'three-worlds', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'power-circle', toSectorId: 'antigone-memorial', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'power-circle', toSectorId: 'herrons-nebula', gatePosition: { x: 0, y: 400 } },
+      // Power Circle connections (3 gates: West, East, South)
+      { fromSectorId: 'power-circle', toSectorId: 'three-worlds', gatePosition: { x: -400, y: 0 } },       // West
+      { fromSectorId: 'power-circle', toSectorId: 'antigone-memorial', gatePosition: { x: 400, y: 0 } },  // East
+      { fromSectorId: 'power-circle', toSectorId: 'herrons-nebula', gatePosition: { x: 0, y: 400 } },     // South
       
-      // Antigone Memorial connections
-      { fromSectorId: 'antigone-memorial', toSectorId: 'power-circle', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'antigone-memorial', toSectorId: 'the-hole', gatePosition: { x: 400, y: 0 } },
+      // Antigone Memorial connections (2 gates: West, East)
+      { fromSectorId: 'antigone-memorial', toSectorId: 'power-circle', gatePosition: { x: -400, y: 0 } }, // West
+      { fromSectorId: 'antigone-memorial', toSectorId: 'the-hole', gatePosition: { x: 400, y: 0 } },      // East
       
-      // Cloudbase NW connections
-      { fromSectorId: 'cloudbase-nw', toSectorId: 'three-worlds', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'cloudbase-nw', toSectorId: 'herrons-nebula', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'cloudbase-nw', toSectorId: 'ringo-moon', gatePosition: { x: 0, y: 400 } },
+      // Cloudbase NW connections (3 gates: North, East, South)
+      { fromSectorId: 'cloudbase-nw', toSectorId: 'three-worlds', gatePosition: { x: 0, y: -400 } },       // North
+      { fromSectorId: 'cloudbase-nw', toSectorId: 'herrons-nebula', gatePosition: { x: 400, y: 0 } },     // East
+      { fromSectorId: 'cloudbase-nw', toSectorId: 'ringo-moon', gatePosition: { x: 0, y: 400 } },          // South
       
-      // Herron's Nebula connections (hub sector with 4 connections)
-      { fromSectorId: 'herrons-nebula', toSectorId: 'power-circle', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'herrons-nebula', toSectorId: 'cloudbase-nw', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'herrons-nebula', toSectorId: 'the-hole', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'herrons-nebula', toSectorId: 'argon-prime', gatePosition: { x: 0, y: 400 } },
+      // Herron's Nebula connections (4 gates: North, West, East, South)
+      { fromSectorId: 'herrons-nebula', toSectorId: 'power-circle', gatePosition: { x: 0, y: -400 } },     // North
+      { fromSectorId: 'herrons-nebula', toSectorId: 'cloudbase-nw', gatePosition: { x: -400, y: 0 } },     // West
+      { fromSectorId: 'herrons-nebula', toSectorId: 'the-hole', gatePosition: { x: 400, y: 0 } },          // East
+      { fromSectorId: 'herrons-nebula', toSectorId: 'argon-prime', gatePosition: { x: 0, y: 400 } },        // South
       
-      // The Hole connections
-      { fromSectorId: 'the-hole', toSectorId: 'antigone-memorial', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'the-hole', toSectorId: 'herrons-nebula', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'the-hole', toSectorId: 'the-wall', gatePosition: { x: 400, y: 0 } },
+      // The Hole connections (3 gates: West, North, East) - FIXED OVERLAP
+      { fromSectorId: 'the-hole', toSectorId: 'antigone-memorial', gatePosition: { x: -400, y: 0 } },      // West
+      { fromSectorId: 'the-hole', toSectorId: 'herrons-nebula', gatePosition: { x: 0, y: -400 } },         // North
+      { fromSectorId: 'the-hole', toSectorId: 'the-wall', gatePosition: { x: 400, y: 0 } },              // East
       
-      // Ringo Moon connections
-      { fromSectorId: 'ringo-moon', toSectorId: 'cloudbase-nw', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'ringo-moon', toSectorId: 'argon-prime', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'ringo-moon', toSectorId: 'red-light', gatePosition: { x: 0, y: 400 } },
+      // Ringo Moon connections (3 gates: North, East, South)
+      { fromSectorId: 'ringo-moon', toSectorId: 'cloudbase-nw', gatePosition: { x: 0, y: -400 } },         // North
+      { fromSectorId: 'ringo-moon', toSectorId: 'argon-prime', gatePosition: { x: 400, y: 0 } },           // East
+      { fromSectorId: 'ringo-moon', toSectorId: 'red-light', gatePosition: { x: 0, y: 400 } },          // South
       
-      // Argon Prime connections (central hub with 4 connections)
-      { fromSectorId: 'argon-prime', toSectorId: 'herrons-nebula', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'argon-prime', toSectorId: 'ringo-moon', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'argon-prime', toSectorId: 'the-wall', gatePosition: { x: 400, y: 0 } },
+      // Argon Prime connections (4 gates: North, West, East, South)
+      { fromSectorId: 'argon-prime', toSectorId: 'herrons-nebula', gatePosition: { x: 0, y: -400 } },      // North
+      { fromSectorId: 'argon-prime', toSectorId: 'ringo-moon', gatePosition: { x: -400, y: 0 } },          // West
+      { fromSectorId: 'argon-prime', toSectorId: 'the-wall', gatePosition: { x: 400, y: 0 } },             // East
       { fromSectorId: 'argon-prime', toSectorId: 'home-of-light', gatePosition: { x: 0, y: 400 } },
       
-      // The Wall connections
-      { fromSectorId: 'the-wall', toSectorId: 'the-hole', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'the-wall', toSectorId: 'argon-prime', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'the-wall', toSectorId: 'presidents-end', gatePosition: { x: 400, y: 0 } },
+      // The Wall connections (3 gates: North, West, East) - FIXED OVERLAP
+      { fromSectorId: 'the-wall', toSectorId: 'the-hole', gatePosition: { x: 0, y: -400 } },              // North
+      { fromSectorId: 'the-wall', toSectorId: 'argon-prime', gatePosition: { x: -400, y: 0 } },           // West
+      { fromSectorId: 'the-wall', toSectorId: 'presidents-end', gatePosition: { x: 400, y: 0 } },         // East
       
-      // Red Light connections
-      { fromSectorId: 'red-light', toSectorId: 'ringo-moon', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'red-light', toSectorId: 'home-of-light', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'red-light', toSectorId: 'cloudbase-sw', gatePosition: { x: 0, y: 400 } },
+      // Red Light connections (3 gates: North, East, South)
+      { fromSectorId: 'red-light', toSectorId: 'ringo-moon', gatePosition: { x: 0, y: -400 } },            // North
+      { fromSectorId: 'red-light', toSectorId: 'home-of-light', gatePosition: { x: 400, y: 0 } },         // East
+      { fromSectorId: 'red-light', toSectorId: 'cloudbase-sw', gatePosition: { x: 0, y: 400 } },         // South
       
-      // Home of Light connections (hub sector with 4 connections)
-      { fromSectorId: 'home-of-light', toSectorId: 'argon-prime', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'home-of-light', toSectorId: 'red-light', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'home-of-light', toSectorId: 'presidents-end', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'home-of-light', toSectorId: 'ore-belt', gatePosition: { x: 0, y: 400 } },
+      // Home of Light connections (4 gates: North, West, East, South)
+      { fromSectorId: 'home-of-light', toSectorId: 'argon-prime', gatePosition: { x: 0, y: -400 } },       // North
+      { fromSectorId: 'home-of-light', toSectorId: 'red-light', gatePosition: { x: -400, y: 0 } },        // West
+      { fromSectorId: 'home-of-light', toSectorId: 'presidents-end', gatePosition: { x: 400, y: 0 } },    // East
+      { fromSectorId: 'home-of-light', toSectorId: 'ore-belt', gatePosition: { x: 0, y: 400 } },        // South
       
-      // President's End connections (hub sector with 4 connections)
-      { fromSectorId: 'presidents-end', toSectorId: 'the-wall', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'presidents-end', toSectorId: 'home-of-light', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'presidents-end', toSectorId: 'elena-fortune', gatePosition: { x: 400, y: 0 } },
-      { fromSectorId: 'presidents-end', toSectorId: 'cloudbase-se', gatePosition: { x: 0, y: 400 } },
+      // President's End connections (4 gates: North, West, East, South) - FIXED OVERLAP
+      { fromSectorId: 'presidents-end', toSectorId: 'the-wall', gatePosition: { x: 0, y: -400 } },         // North
+      { fromSectorId: 'presidents-end', toSectorId: 'home-of-light', gatePosition: { x: -400, y: 0 } },    // West
+      { fromSectorId: 'presidents-end', toSectorId: 'elena-fortune', gatePosition: { x: 400, y: 0 } },     // East
+      { fromSectorId: 'presidents-end', toSectorId: 'cloudbase-se', gatePosition: { x: 0, y: 400 } },     // South
       
-      // Cloudbase SW connections
-      { fromSectorId: 'cloudbase-sw', toSectorId: 'red-light', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'cloudbase-sw', toSectorId: 'ore-belt', gatePosition: { x: 400, y: 0 } },
+      // Cloudbase SW connections (2 gates: North, East)
+      { fromSectorId: 'cloudbase-sw', toSectorId: 'red-light', gatePosition: { x: 0, y: -400 } },          // North
+      { fromSectorId: 'cloudbase-sw', toSectorId: 'ore-belt', gatePosition: { x: 400, y: 0 } },           // East
       
-      // Ore Belt connections
-      { fromSectorId: 'ore-belt', toSectorId: 'home-of-light', gatePosition: { x: 0, y: -400 } },
-      { fromSectorId: 'ore-belt', toSectorId: 'cloudbase-sw', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'ore-belt', toSectorId: 'cloudbase-se', gatePosition: { x: 400, y: 0 } },
+      // Ore Belt connections (3 gates: North, West, East)
+      { fromSectorId: 'ore-belt', toSectorId: 'home-of-light', gatePosition: { x: 0, y: -400 } },          // North
+      { fromSectorId: 'ore-belt', toSectorId: 'cloudbase-sw', gatePosition: { x: -400, y: 0 } },           // West
+      { fromSectorId: 'ore-belt', toSectorId: 'cloudbase-se', gatePosition: { x: 400, y: 0 } },         // East
       
-      // Cloudbase SE connections
-      { fromSectorId: 'cloudbase-se', toSectorId: 'ore-belt', gatePosition: { x: -400, y: 0 } },
-      { fromSectorId: 'cloudbase-se', toSectorId: 'presidents-end', gatePosition: { x: 0, y: -400 } },
+      // Cloudbase SE connections (2 gates: West, North)
+      { fromSectorId: 'cloudbase-se', toSectorId: 'ore-belt', gatePosition: { x: -400, y: 0 } },           // West
+      { fromSectorId: 'cloudbase-se', toSectorId: 'presidents-end', gatePosition: { x: 0, y: -400 } },     // North
       
-      // Elena's Fortune connections
-      { fromSectorId: 'elena-fortune', toSectorId: 'presidents-end', gatePosition: { x: -400, y: 0 } }
+      // Elena's Fortune connections (1 gate: West)
+      { fromSectorId: 'elena-fortune', toSectorId: 'presidents-end', gatePosition: { x: -400, y: 0 } }       // West
     ];
 
     return { connections };
