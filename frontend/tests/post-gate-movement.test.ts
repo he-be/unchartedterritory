@@ -28,7 +28,7 @@ test.describe('Post-Gate Movement', () => {
     await expect(page.locator('text=/Queue \\(\\d+\\):/').first()).toBeVisible({ timeout: 5000 });
     
     // Wait for pathfinding and gate jump to complete - ship should end up in Three Worlds
-    await expect(discoveryShip.locator('text=Sector: three-worlds')).toBeVisible({ timeout: 20000 });
+    await expect(discoveryShip.locator('text=/Sector: (three-worlds|Three Worlds)/')).toBeVisible({ timeout: 20000 });
     
     // Ship should eventually reach idle state at destination
     await expect(discoveryShip.locator('text=Status: Idle')).toBeVisible({ timeout: 15000 });

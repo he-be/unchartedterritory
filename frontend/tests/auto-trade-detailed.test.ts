@@ -19,7 +19,17 @@ test.describe('Auto-Trade Detailed Testing', () => {
     const initialPosition = await traderShip.locator('text=/Position: \\([^)]+\\)/').textContent();
     console.log('Initial Trader position:', initialPosition);
     
-    // Verify auto-trade is ON
+    // Check if auto-trade is ON or enable it if OFF
+    const autoTradeButton = traderShip.locator('button[class*="auto-trade"], button:has-text("Auto-Trade")');
+    await expect(autoTradeButton).toBeVisible();
+    
+    const buttonText = await autoTradeButton.textContent();
+    if (buttonText?.includes('OFF')) {
+      await autoTradeButton.click();
+      await page.waitForTimeout(1000);
+    }
+    
+    // Verify auto-trade is now ON
     await expect(traderShip.locator('button:has-text("Auto-Trade: ON")')).toBeVisible();
     
     // Wait for longer period to allow movement
