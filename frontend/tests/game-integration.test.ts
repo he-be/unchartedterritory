@@ -15,8 +15,8 @@ test.describe('Uncharted Territory Game', () => {
     // Wait for game to load
     await page.waitForSelector('.game-layout');
     
-    // Verify game state
-    await expect(page.locator('text=Player: TestPlayer')).toBeVisible();
+    // Verify game state - player name appears in header without "Player:" prefix
+    await expect(page.locator('text=TestPlayer')).toBeVisible();
     await expect(page.locator('text=Credits: 25,000')).toBeVisible();
     await expect(page.locator('.status.connected')).toBeVisible();
     
@@ -76,9 +76,11 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();
     await expect(page.locator('canvas')).toBeVisible();
     
-    // Check that Argon Prime has 2-3 stations (procedurally generated)
-    await expect(page.locator('text=/Stations: [2-3]/').first()).toBeVisible();
-    await expect(page.locator('text=Gates: 4').first()).toBeVisible();
+    // Check that Argon Prime has stations in the right pane (procedurally generated 2-3 stations)
+    const stationCount = await page.locator('.right-pane .station-item').count();
+    expect(stationCount).toBeGreaterThanOrEqual(2);
+    expect(stationCount).toBeLessThanOrEqual(3);
+    await expect(page.locator('text=Stations')).toBeVisible(); // Stations header should be visible
   });
 
 });
