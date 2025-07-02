@@ -85,7 +85,7 @@ test.describe('UI Layout and Design', () => {
     
     // Check individual sector buttons
     await expect(page.locator('.sector-buttons button:has-text("Argon Prime")')).toBeVisible();
-    await expect(page.locator('.sector-buttons button:has-text("Three\'s Company")')).toBeVisible();
+    await expect(page.locator('.sector-buttons button:has-text("Three Worlds")')).toBeVisible();
     await expect(page.locator('.sector-buttons button:has-text("Elena\'s Fortune")')).toBeVisible();
     
     // Check canvas is present

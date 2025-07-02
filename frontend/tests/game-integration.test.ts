@@ -22,9 +22,8 @@ test.describe('Uncharted Territory Game', () => {
     
     // Verify sectors are loaded (now in right pane)
     await expect(page.locator('text=Sector Info')).toBeVisible();
-    await expect(page.locator('.right-pane .station-name:has-text("Argon Prime")')).toBeVisible();
-    await expect(page.locator('.right-pane .station-name:has-text("Advanced Tech Factory")')).toBeVisible();
-    await expect(page.locator('.right-pane .station-name:has-text("Technology Research Laboratory")')).toBeVisible();
+    // Check for procedurally generated station names containing "Argon Prime"
+    await expect(page.locator('.right-pane .station-name').filter({ hasText: 'Argon Prime' }).first()).toBeVisible();
     
     // Verify ships exist (Discovery + Trader cargo ship)
     await expect(page.locator('text=Ships (2)')).toBeVisible();
@@ -78,8 +77,8 @@ test.describe('Uncharted Territory Game', () => {
     await expect(page.locator('text=Sector Map: Argon Prime')).toBeVisible();
     await expect(page.locator('canvas')).toBeVisible();
     
-    // Check that Argon Prime has 3 stations
-    await expect(page.locator('text=Stations: 3').first()).toBeVisible();
+    // Check that Argon Prime has 2-3 stations (procedurally generated)
+    await expect(page.locator('text=/Stations: [2-3]/').first()).toBeVisible();
     await expect(page.locator('text=Gates: 4').first()).toBeVisible();
   });
 

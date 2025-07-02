@@ -13,11 +13,11 @@ test.describe('Post-Gate Movement', () => {
     const discoveryShip = page.locator('.ship-item:has-text("Discovery")');
     await discoveryShip.click();
     
-    // Switch to Three's Company view
-    await page.click('button:has-text("Three\'s Company")');
-    await page.waitForSelector('text=Sector Map: Three\'s Company');
+    // Switch to Three Worlds view
+    await page.click('button:has-text("Three Worlds")');
+    await page.waitForSelector('text=Sector Map: Three Worlds');
     
-    // Click on a specific position in Three's Company (not on gate)
+    // Click on a specific position in Three Worlds (not on gate)
     const canvas = page.locator('canvas');
     await canvas.click({ position: { x: 200, y: 200 } }); // Arbitrary position in sector
     
@@ -27,8 +27,8 @@ test.describe('Post-Gate Movement', () => {
     // Check command queue appears during cross-sector movement
     await expect(page.locator('text=/Queue \\(\\d+\\):/').first()).toBeVisible({ timeout: 5000 });
     
-    // Wait for pathfinding and gate jump to complete - ship should end up in Three's Company
-    await expect(discoveryShip.locator('text=Sector: threes-company')).toBeVisible({ timeout: 20000 });
+    // Wait for pathfinding and gate jump to complete - ship should end up in Three Worlds
+    await expect(discoveryShip.locator('text=Sector: three-worlds')).toBeVisible({ timeout: 20000 });
     
     // Ship should eventually reach idle state at destination
     await expect(discoveryShip.locator('text=Status: Idle')).toBeVisible({ timeout: 15000 });
