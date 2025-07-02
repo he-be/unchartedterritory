@@ -29,6 +29,8 @@ export interface Station {
   position: Vector2;
   sectorId: string;
   inventory: StationInventory[];
+  stationTypeId: string; // Reference to StationType
+  economicState?: any; // StationEconomicState - using any to avoid circular imports
 }
 
 export interface StationInventory {

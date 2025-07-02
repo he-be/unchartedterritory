@@ -49,7 +49,14 @@ function generateStation(stationType: StationType, sectorId: string, sectorName:
     name: nameVariations,
     position,
     sectorId,
-    inventory
+    inventory,
+    stationTypeId: stationType.id,
+    economicState: {
+      lastUpdateTime: 0,
+      productionCycles: {},
+      consumptionCycles: {},
+      npcTradeTimer: 0
+    }
   };
 }
 

@@ -19,6 +19,20 @@ export interface StationType {
   consumes: string[]; // Ware IDs this station type buys
   rarity: 'common' | 'uncommon' | 'rare'; // How often this type appears
   sectorPreference?: string[]; // Preferred sector types (if any)
+  
+  // NEW: Real-time economic behavior
+  economicType?: 'factory' | 'trading_station' | 'service_station';
+  productionRates?: { [wareId: string]: number }; // Units produced per second
+  consumptionRates?: { [wareId: string]: number }; // Units consumed per second
+  npcTradeFrequency?: number; // For trading stations: NPC trades per minute
+  storageCapacity?: { [wareId: string]: number }; // Max storage per ware type
+}
+
+export interface StationEconomicState {
+  lastUpdateTime: number;
+  productionCycles: { [wareId: string]: number }; // Accumulated production fractions
+  consumptionCycles: { [wareId: string]: number }; // Accumulated consumption fractions
+  npcTradeTimer: number; // Timer for next NPC trade
 }
 
 /**
@@ -72,7 +86,11 @@ export const STATION_TYPES: StationType[] = [
     category: 'production',
     produces: ['ore'],
     consumes: ['energy-cells'],
-    rarity: 'common'
+    rarity: 'common',
+    economicType: 'factory',
+    productionRates: { 'ore': 2.5 }, // 2.5 ore per second
+    consumptionRates: { 'energy-cells': 0.5 }, // 0.5 energy cells per second
+    storageCapacity: { 'ore': 2000, 'energy-cells': 500 }
   },
   {
     id: 'gas-extraction',
@@ -80,7 +98,11 @@ export const STATION_TYPES: StationType[] = [
     category: 'production',
     produces: ['helium'],
     consumes: ['energy-cells'],
-    rarity: 'uncommon'
+    rarity: 'uncommon',
+    economicType: 'factory',
+    productionRates: { 'helium': 1.2 },
+    consumptionRates: { 'energy-cells': 0.8 },
+    storageCapacity: { 'helium': 1500, 'energy-cells': 400 }
   },
   {
     id: 'agricultural-hub',
@@ -88,15 +110,22 @@ export const STATION_TYPES: StationType[] = [
     category: 'production',
     produces: ['food-rations'],
     consumes: ['energy-cells', 'farm-equipment'],
-    rarity: 'common'
+    rarity: 'common',
+    economicType: 'factory',
+    productionRates: { 'food-rations': 1.8 },
+    consumptionRates: { 'energy-cells': 0.6, 'farm-equipment': 0.1 },
+    storageCapacity: { 'food-rations': 2500, 'energy-cells': 300, 'farm-equipment': 200 }
   },
   {
     id: 'energy-plant',
     name: 'Energy Production Plant',
     category: 'production',
     produces: ['energy-cells'],
-    consumes: [],
-    rarity: 'common'
+    consumes: [], // Primary producer - no consumption
+    rarity: 'common',
+    economicType: 'factory',
+    productionRates: { 'energy-cells': 3.0 }, // 3 energy cells per second
+    storageCapacity: { 'energy-cells': 3000 }
   },
   
   // Processing & Manufacturing
@@ -106,7 +135,11 @@ export const STATION_TYPES: StationType[] = [
     category: 'processing',
     produces: ['refined-metals'],
     consumes: ['ore', 'energy-cells'],
-    rarity: 'common'
+    rarity: 'common',
+    economicType: 'factory',
+    productionRates: { 'refined-metals': 1.0 },
+    consumptionRates: { 'ore': 2.0, 'energy-cells': 0.8 },
+    storageCapacity: { 'refined-metals': 1500, 'ore': 2000, 'energy-cells': 400 }
   },
   {
     id: 'gas-processing',
@@ -242,7 +275,10 @@ export const STATION_TYPES: StationType[] = [
     category: 'trading',
     produces: [], // Trading stations don't produce, they facilitate trade
     consumes: [], // They buy and sell various goods
-    rarity: 'common'
+    rarity: 'common',
+    economicType: 'trading_station',
+    npcTradeFrequency: 12, // 12 NPC trades per minute (1 every 5 seconds)
+    storageCapacity: {} // Will be set dynamically based on traded wares
   }
 ];
 
@@ -291,4 +327,92 @@ export function getRandomStationTypes(count: number, _seed?: string): StationTyp
   }
   
   return selected;
+}
+
+/**
+ * Calculate production/consumption for a factory station over time
+ */
+export function updateFactoryProduction(
+  station: any, // Station with inventory
+  stationType: StationType,
+  economicState: StationEconomicState,
+  deltaTimeSeconds: number
+): void {
+  if (stationType.economicType !== 'factory') return;
+  
+  const now = Date.now();
+  if (economicState.lastUpdateTime === 0) {
+    economicState.lastUpdateTime = now;
+    return;
+  }
+  
+  // Consumption phase: Check if we have enough materials
+  let canProduce = true;
+  if (stationType.consumptionRates) {
+    for (const [wareId, ratePerSecond] of Object.entries(stationType.consumptionRates)) {
+      const required = ratePerSecond * deltaTimeSeconds;
+      const inventory = station.inventory.find((inv: any) => inv.wareId === wareId);
+      if (!inventory || inventory.quantity < required) {
+        canProduce = false;
+        break;
+      }
+    }
+  }
+  
+  if (canProduce) {
+    // Consume materials
+    if (stationType.consumptionRates) {
+      for (const [wareId, ratePerSecond] of Object.entries(stationType.consumptionRates)) {
+        const toConsume = ratePerSecond * deltaTimeSeconds;
+        const inventory = station.inventory.find((inv: any) => inv.wareId === wareId);
+        if (inventory) {
+          inventory.quantity = Math.max(0, inventory.quantity - toConsume);
+        }
+      }
+    }
+    
+    // Produce goods
+    if (stationType.productionRates) {
+      for (const [wareId, ratePerSecond] of Object.entries(stationType.productionRates)) {
+        const toProduce = ratePerSecond * deltaTimeSeconds;
+        const inventory = station.inventory.find((inv: any) => inv.wareId === wareId);
+        if (inventory) {
+          const maxCapacity = stationType.storageCapacity?.[wareId] || 1000;
+          inventory.quantity = Math.min(maxCapacity, inventory.quantity + toProduce);
+        }
+      }
+    }
+  }
+  
+  economicState.lastUpdateTime = now;
+}
+
+/**
+ * Simulate NPC trading for trading stations
+ */
+export function updateTradingStationActivity(
+  station: any,
+  stationType: StationType, 
+  economicState: StationEconomicState,
+  deltaTimeSeconds: number
+): void {
+  if (stationType.economicType !== 'trading_station' || !stationType.npcTradeFrequency) return;
+  
+  economicState.npcTradeTimer += deltaTimeSeconds;
+  const tradeInterval = 60 / stationType.npcTradeFrequency; // Seconds between trades
+  
+  while (economicState.npcTradeTimer >= tradeInterval) {
+    economicState.npcTradeTimer -= tradeInterval;
+    
+    // Simulate random NPC trade
+    const availableWares = station.inventory.filter((inv: any) => inv.quantity > 0 && inv.buyPrice > 0);
+    if (availableWares.length > 0) {
+      const randomWare = availableWares[Math.floor(Math.random() * availableWares.length)];
+      const tradeAmount = Math.floor(Math.random() * 50) + 10; // 10-60 units
+      const actualAmount = Math.min(tradeAmount, randomWare.quantity);
+      
+      randomWare.quantity -= actualAmount;
+      // Note: This simulates NPC buying from the station (reducing stock)
+    }
+  }
 }

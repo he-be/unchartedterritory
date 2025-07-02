@@ -15,6 +15,7 @@ import type {
 import { TradingAI } from './trading-ai';
 import { SectorGraphManager } from './sector-graph';
 import { generateStationsForSector } from './station-generator';
+import { getStationType, updateFactoryProduction, updateTradingStationActivity } from './economy';
 
 // Game loop configuration
 const TICK_RATE_HZ = 30;
@@ -234,11 +235,8 @@ export class GameSession implements DurableObject {
     const SHIP_SPEED = 60; // Units per second (3x speed for faster movement)
     const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
 
-    // Periodically regenerate market inventory (every 30 seconds of game time)
-    const MARKET_REGEN_INTERVAL = 30000; // 30 seconds
-    if (this.gameState.gameTime % MARKET_REGEN_INTERVAL < TICK_INTERVAL_MS) {
-      this.regenerateMarketInventory();
-    }
+    // Continuous economic simulation - update all stations every tick
+    this.updateStationEconomics(deltaTime);
 
     // Update ship positions and process commands
     for (const ship of this.gameState.player.ships) {
@@ -1033,29 +1031,29 @@ export class GameSession implements DurableObject {
   }
 
   /**
-   * Regenerate market inventory to prevent trading opportunities from running out
+   * Update station economics with continuous production/consumption and NPC trading
    */
-  private regenerateMarketInventory(): void {
+  private updateStationEconomics(deltaTimeSeconds: number): void {
     if (!this.gameState) return;
 
-    console.log('🔄 Regenerating market inventory...');
-    
     for (const sector of this.gameState.sectors) {
       for (const station of sector.stations) {
-        for (const inventory of station.inventory) {
-          // Slowly regenerate producer inventory (what stations sell)
-          if (inventory.sellPrice > 0 && inventory.quantity < 1000) {
-            const regenAmount = Math.floor(Math.random() * 100) + 50; // 50-150 units
-            inventory.quantity = Math.min(inventory.quantity + regenAmount, 1000);
-          }
-          
-          // Don't regenerate consumed goods (inventory.buyPrice > 0 with quantity 0 is normal)
-          // Those represent demand for goods that traders can fulfill
+        if (!station.stationTypeId || !station.economicState) continue;
+        
+        const stationType = getStationType(station.stationTypeId);
+        if (!stationType) continue;
+        
+        // Update factory production/consumption
+        if (stationType.economicType === 'factory') {
+          updateFactoryProduction(station, stationType, station.economicState, deltaTimeSeconds);
+        }
+        
+        // Update trading station NPC activity
+        if (stationType.economicType === 'trading_station') {
+          updateTradingStationActivity(station, stationType, station.economicState, deltaTimeSeconds);
         }
       }
     }
-    
-    console.log('✅ Market inventory regenerated');
   }
 
   /**
