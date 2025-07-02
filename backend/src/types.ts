@@ -29,6 +29,8 @@ export interface Station {
   position: Vector2;
   sectorId: string;
   inventory: StationInventory[];
+  stationTypeId: string; // Reference to StationType
+  economicState?: any; // StationEconomicState - using any to avoid circular imports
 }
 
 export interface StationInventory {
@@ -50,6 +52,24 @@ export interface Gate {
   id: string;
   position: Vector2;
   targetSectorId: string;
+}
+
+// Sector connection graph - single source of truth for sector connectivity
+export interface SectorConnection {
+  fromSectorId: string;
+  toSectorId: string;
+  gatePosition: Vector2; // Position of gate in fromSector
+}
+
+export interface SectorGraph {
+  connections: SectorConnection[];
+}
+
+export interface GateValidationResult {
+  isValid: boolean;
+  errors: string[];
+  missingGates: SectorConnection[];
+  extraGates: Gate[];
 }
 
 export interface Player {

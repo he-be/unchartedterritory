@@ -1,0 +1,43 @@
+graph TD;
+    subgraph Universe
+        TW["Three Worlds"]
+        PC["Power Circle"]
+        AM["Antigone Memorial"]
+        CN["Cloudbase NW"]
+        HN["Herron's Nebula"]
+        TH["The Hole"]
+        RM["Ringo Moon"]
+        AP["Argon Prime"]
+        TA["The Wall"]
+        RL["Red Light"]
+        HL["Home of Light"]
+        PE["President's End"]
+        CS["Cloudbase SW"]
+        OB["Ore Belt"]
+        CE["Cloudbase SE"]
+        EF["Elena's Fortune"]
+    end
+
+    TW <--> PC;
+    TW <--> CN;
+    PC <--> AM;
+    PC <--> HN;
+    AM <--> TH;
+    CN <--> HN;
+    CN <--> RM;
+    HN <--> TH;
+    HN <--> AP;
+    TH <--> TA;
+    RM <--> AP;
+    RM <--> RL;
+    AP <--> TA;
+    AP <--> HL;
+    TA <--> PE;
+    RL <--> HL;
+    RL <--> CS;
+    HL <--> PE;
+    HL <--> OB;
+    PE <--> EF;
+    PE <--> CE;
+    CS <--> OB;
+    OB <--> CE;

@@ -13,6 +13,9 @@ import type {
   TradeData
 } from './types';
 import { TradingAI } from './trading-ai';
+import { SectorGraphManager } from './sector-graph';
+import { generateStationsForSector } from './station-generator';
+import { getStationType, updateFactoryProduction, updateTradingStationActivity } from './economy';
 
 // Game loop configuration
 const TICK_RATE_HZ = 30;
@@ -23,9 +26,11 @@ export class GameSession implements DurableObject {
   private gameState: GameState | null = null;
   private lastUpdateTime = 0;
   private tradingAI: TradingAI | null = null;
+  private sectorGraph: SectorGraphManager;
 
   constructor(state: DurableObjectState, _env: unknown) {
     this.state = state;
+    this.sectorGraph = new SectorGraphManager();
     
     // Initialize game state from storage
     this.state.blockConcurrencyWhile(async () => {
@@ -35,6 +40,9 @@ export class GameSession implements DurableObject {
         this.gameState = stored as GameState;
         this.tradingAI = new TradingAI(this.gameState);
         console.log('DO Constructor: gameState loaded successfully.');
+        
+        // Validate sector gates on load
+        this.validateSectorGates();
       } else {
         console.log('DO Constructor: No gameState found in storage.');
       }
@@ -226,6 +234,9 @@ export class GameSession implements DurableObject {
 
     const SHIP_SPEED = 60; // Units per second (3x speed for faster movement)
     const deltaTime = TICK_INTERVAL_MS / 1000; // Convert to seconds
+
+    // Continuous economic simulation - update all stations every tick
+    this.updateStationEconomics(deltaTime);
 
     // Update ship positions and process commands
     for (const ship of this.gameState.player.ships) {
@@ -668,130 +679,8 @@ export class GameSession implements DurableObject {
   private createInitialGameState(playerName: string, gameId: string): GameState {
     const playerId = crypto.randomUUID();
     
-    // Create initial sectors with gates
-    const sectors: Sector[] = [
-      {
-        id: 'argon-prime',
-        name: 'Argon Prime',
-        coordinates: { x: 0, y: 0 },
-        stations: [
-          {
-            id: 'trading-station-1',
-            name: 'Trading Station Alpha',
-            position: { x: 100, y: 100 },
-            sectorId: 'argon-prime',
-            inventory: [
-              {
-                wareId: 'energy-cells',
-                quantity: 1000,
-                buyPrice: 0, // Trading station doesn't buy energy cells
-                sellPrice: 15 // Trading station sells energy cells to traders
-              },
-              {
-                wareId: 'microchips',
-                quantity: 0,
-                buyPrice: 95, // Trading station buys microchips from traders
-                sellPrice: 0 // Trading station doesn't sell microchips
-              }
-            ]
-          },
-          {
-            id: 'shipyard-1',
-            name: 'Argon Shipyard',
-            position: { x: -200, y: 150 },
-            sectorId: 'argon-prime',
-            inventory: [
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 11, // Shipyard buys ore for ship construction
-                sellPrice: 0 // Shipyard doesn't sell ore
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-threes-company',
-            position: { x: 400, y: 0 },
-            targetSectorId: 'threes-company'
-          },
-          {
-            id: 'gate-to-elena-fortune',
-            position: { x: -400, y: 0 },
-            targetSectorId: 'elena-fortune'
-          }
-        ]
-      },
-      {
-        id: 'threes-company',
-        name: "Three's Company",
-        coordinates: { x: 1, y: 0 },
-        stations: [
-          {
-            id: 'mining-station-1',
-            name: 'Ore Processing Plant',
-            position: { x: 0, y: 200 },
-            sectorId: 'threes-company',
-            inventory: [
-              {
-                wareId: 'ore',
-                quantity: 2000,
-                buyPrice: 0, // Mining plant doesn't buy ore (it produces ore)
-                sellPrice: 8 // Mining plant sells ore to traders
-              },
-              {
-                wareId: 'energy-cells',
-                quantity: 0,
-                buyPrice: 18, // Mining plant buys energy cells for operations
-                sellPrice: 0 // Mining plant doesn't sell energy cells
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-argon-prime-2',
-            position: { x: -400, y: 0 },
-            targetSectorId: 'argon-prime'
-          }
-        ]
-      },
-      {
-        id: 'elena-fortune',
-        name: "Elena's Fortune",
-        coordinates: { x: -1, y: 0 },
-        stations: [
-          {
-            id: 'tech-factory-1',
-            name: 'Advanced Tech Factory',
-            position: { x: 150, y: -100 },
-            sectorId: 'elena-fortune',
-            inventory: [
-              {
-                wareId: 'microchips',
-                quantity: 300,
-                buyPrice: 0, // Tech factory doesn't buy microchips (it produces them)
-                sellPrice: 85 // Tech factory sells microchips to traders
-              },
-              {
-                wareId: 'ore',
-                quantity: 0,
-                buyPrice: 10, // Tech factory buys ore for manufacturing
-                sellPrice: 0 // Tech factory doesn't sell ore
-              }
-            ]
-          }
-        ],
-        gates: [
-          {
-            id: 'gate-to-argon-prime-3',
-            position: { x: 400, y: 0 },
-            targetSectorId: 'argon-prime'
-          }
-        ]
-      }
-    ];
+    // Generate all sectors dynamically from the sector graph (single source of truth)
+    const sectors: Sector[] = this.generateAllSectorsFromGraph();
 
     // Create initial ships
     const ship: Ship = {
@@ -1111,6 +1000,102 @@ export class GameSession implements DurableObject {
       }
     } catch (error) {
       console.error('Error executing auto-trade:', error);
+    }
+  }
+
+  /**
+   * Generate all sectors from the sector graph with their stations and gates
+   */
+  private generateAllSectorsFromGraph(): Sector[] {
+    const allSectorMetadata = this.sectorGraph.getAllSectorMetadata();
+    const sectors: Sector[] = [];
+    
+    for (const metadata of allSectorMetadata) {
+      const sector: Sector = {
+        id: metadata.id,
+        name: metadata.name,
+        coordinates: metadata.coordinates,
+        stations: generateStationsForSector({
+          minStations: 2,
+          maxStations: 3,
+          sectorId: metadata.id,
+          sectorName: metadata.name,
+          seed: `${metadata.id}-stations` // Deterministic generation based on sector
+        }),
+        gates: this.sectorGraph.generateGatesForSector(metadata.id)
+      };
+      sectors.push(sector);
+    }
+    
+    return sectors;
+  }
+
+  /**
+   * Update station economics with continuous production/consumption and NPC trading
+   */
+  private updateStationEconomics(deltaTimeSeconds: number): void {
+    if (!this.gameState) return;
+
+    for (const sector of this.gameState.sectors) {
+      for (const station of sector.stations) {
+        if (!station.stationTypeId || !station.economicState) continue;
+        
+        const stationType = getStationType(station.stationTypeId);
+        if (!stationType) continue;
+        
+        // Update factory production/consumption
+        if (stationType.economicType === 'factory') {
+          updateFactoryProduction(station, stationType, station.economicState, deltaTimeSeconds);
+        }
+        
+        // Update trading station NPC activity
+        if (stationType.economicType === 'trading_station') {
+          updateTradingStationActivity(station, stationType, station.economicState, deltaTimeSeconds);
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate sector gates against the graph and log any issues
+   */
+  private validateSectorGates(): void {
+    if (!this.gameState) return;
+
+    console.log('🔍 Validating sector gate configuration...');
+    
+    const validationResult = this.sectorGraph.validateSectorGates(this.gameState.sectors);
+    
+    if (validationResult.isValid) {
+      console.log('✅ All sector gates are properly configured');
+    } else {
+      console.error('❌ Sector gate validation failed:');
+      validationResult.errors.forEach(error => console.error(`  - ${error}`));
+      
+      if (validationResult.missingGates.length > 0) {
+        console.error('🚫 Missing gates:');
+        validationResult.missingGates.forEach(gate => 
+          console.error(`  - ${gate.fromSectorId} → ${gate.toSectorId}`)
+        );
+      }
+      
+      if (validationResult.extraGates.length > 0) {
+        console.error('⚠️ Extra gates:');
+        validationResult.extraGates.forEach(gate => 
+          console.error(`  - ${gate.id} → ${gate.targetSectorId}`)
+        );
+      }
+    }
+
+    // Also validate graph connectivity
+    const allSectorIds = this.gameState.sectors.map(s => s.id);
+    const connectivityResult = this.sectorGraph.validateGraphConnectivity(allSectorIds);
+    
+    if (connectivityResult.isConnected) {
+      console.log('✅ All sectors are reachable (graph is connected)');
+    } else {
+      console.error('❌ Graph connectivity issues:');
+      connectivityResult.errors.forEach(error => console.error(`  - ${error}`));
     }
   }
 }
