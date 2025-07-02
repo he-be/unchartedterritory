@@ -37,6 +37,7 @@ export class TradingAI {
 
   /**
    * Find the best trade opportunity for a ship
+   * EXPLORATION PHASE: Evaluate all opportunities before making decisions
    */
   findBestTradeOpportunity(ship: Ship): TradeOpportunity | null {
     const opportunities: TradeOpportunity[] = [];
@@ -53,7 +54,8 @@ export class TradingAI {
     }
     console.log(`Found ${wareIds.size} unique wares: ${Array.from(wareIds).join(', ')}`);
 
-    // For each ware, find best buy and sell opportunities
+    // EXPLORATION PHASE: For each ware, find best buy and sell opportunities
+    // Note: findBestTradeForWare now only explores, doesn't record cooldowns
     for (const wareId of wareIds) {
       const opportunity = this.findBestTradeForWare(wareId, ship, stationPrices);
       if (opportunity) {
@@ -61,7 +63,8 @@ export class TradingAI {
       }
     }
 
-    // Return the opportunity with highest total profit
+    // DECISION PHASE: Return the opportunity with highest total profit
+    // Cooldown recording happens in generateTradingCommands for the chosen opportunity
     return opportunities.length > 0 
       ? opportunities.reduce((best, current) => 
           current.totalProfit > best.totalProfit ? current : best
@@ -165,9 +168,8 @@ export class TradingAI {
       );
       
       if (maxQuantity > 0 && profit > 0) {
-        // Record trades for both stations to prevent immediate return
-        this.recordTrade(ship.id, buyStation.id);
-        this.recordTrade(ship.id, sellStation.id);
+        // NOTE: Cooldown recording moved to generateTradingCommands method
+        // to ensure it happens only when trade is actually executed
         
         return {
           wareId,
@@ -187,6 +189,7 @@ export class TradingAI {
 
   /**
    * Find sell opportunity for cargo already on the ship
+   * PHASE 1: Complete exploration before decision
    */
   private findSellOpportunityForCargo(ship: Ship): TradeOpportunity | null {
     if (ship.cargo.length === 0) return null;
@@ -194,6 +197,7 @@ export class TradingAI {
     let bestOpportunity: TradeOpportunity | null = null;
     let bestTotalProfit = 0;
 
+    // EXPLORATION PHASE: Check all possible sell opportunities
     for (const cargoItem of ship.cargo) {
       // Find all stations that buy this ware
       for (const sector of this.gameState.sectors) {
@@ -208,6 +212,7 @@ export class TradingAI {
             const maxSellQuantity = cargoItem.quantity; // Sell all cargo we have
             const totalProfit = inventory.buyPrice * maxSellQuantity;
             
+            // Only update best opportunity, don't record trade yet
             if (totalProfit > bestTotalProfit) {
               bestOpportunity = {
                 wareId: cargoItem.wareId,
@@ -226,11 +231,10 @@ export class TradingAI {
       }
     }
     
-    // Record the sell trade if we found an opportunity
-    if (bestOpportunity) {
-      this.recordTrade(ship.id, bestOpportunity.sellStation.id);
-    }
-
+    // DECISION PHASE: Only record cooldown if we have a final decision
+    // NOTE: Cooldown recording moved to generateTradingCommands method
+    // to ensure it happens only when trade is actually executed
+    
     return bestOpportunity;
   }
 
@@ -283,6 +287,7 @@ export class TradingAI {
 
   /**
    * Generate trading commands for a ship
+   * DECISION & EXECUTION PHASE: Record cooldowns only for final chosen trades
    */
   generateTradingCommands(ship: Ship): ShipQueueCommand[] {
     console.log(`Generating trading commands for ${ship.name} in sector ${ship.sectorId}`);
@@ -291,15 +296,29 @@ export class TradingAI {
     const sellOpportunity = this.findSellOpportunityForCargo(ship);
     if (sellOpportunity) {
       console.log(`Ship ${ship.name} has cargo, prioritizing sell: ${sellOpportunity.wareId} to ${sellOpportunity.sellStation.name} for ${sellOpportunity.totalProfit} profit`);
+      
+      // DECISION PHASE: Record cooldown only for the chosen sell station
+      this.recordTrade(ship.id, sellOpportunity.sellStation.id);
+      
       return this.generateSellCommands(ship, sellOpportunity);
     }
     
     const opportunity = this.findBestTradeOpportunity(ship);
     if (!opportunity) {
       console.log(`No valid trading opportunity found for ${ship.name} - stopping auto-trade`);
+      // DEADLOCK PREVENTION: Clear trade history if no opportunities found
+      // This allows the ship to retry previously visited stations after some time
+      if (ship.cargo.length === 0) {
+        console.log(`Ship ${ship.name} has no cargo and no opportunities - clearing trade history to prevent deadlock`);
+        this.clearTradeHistory(ship.id);
+      }
       return [];
     }
     console.log(`Found trading opportunity for ${ship.name}: Buy ${opportunity.wareId} from ${opportunity.buyStation.name} at ${opportunity.buyPrice}, sell to ${opportunity.sellStation.name} at ${opportunity.sellPrice}, profit: ${opportunity.totalProfit}`);
+
+    // DECISION PHASE: Record cooldowns only for the final chosen trade stations
+    this.recordTrade(ship.id, opportunity.buyStation.id);
+    this.recordTrade(ship.id, opportunity.sellStation.id);
 
     const commands: ShipQueueCommand[] = [];
 
