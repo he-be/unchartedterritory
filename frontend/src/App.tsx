@@ -3,6 +3,7 @@ import { apiService } from './services/api';
 import { WebSocketService } from './services/websocket';
 import type { GameState, ConnectionStatus, Vector2 } from './types';
 import SectorMap from './components/SectorMap';
+import StatusLog from './components/StatusLog';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -220,6 +221,19 @@ const App: React.FC = () => {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Status Log */}
+            <div className="card">
+              <div className="card-header">
+                <h3>Status Log</h3>
+              </div>
+              <div className="card-content" style={{ padding: 0 }}>
+                <StatusLog 
+                  events={gameState.events || []}
+                  shipNames={new Map(gameState.player.ships.map(ship => [ship.id, ship.name]))}
+                />
               </div>
             </div>
 

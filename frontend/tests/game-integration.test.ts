@@ -26,8 +26,8 @@ test.describe('Uncharted Territory Game', () => {
     
     // Verify ships exist (Discovery + Trader cargo ship)
     await expect(page.locator('text=Ships (2)')).toBeVisible();
-    await expect(page.locator('text=Discovery')).toBeVisible();
-    await expect(page.locator('text=Trader')).toBeVisible();
+    await expect(page.locator('.ship-name:has-text("Discovery")')).toBeVisible();
+    await expect(page.locator('.ship-name:has-text("Trader")')).toBeVisible();
   });
 
   test('should select ship and send move command', async ({ page }) => {
