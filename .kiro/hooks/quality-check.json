@@ -1,0 +1,16 @@
+{
+  "name": "品質チェック自動化",
+  "description": "コードファイルが保存されたときに品質チェックを実行します。TypeScript strict mode、ESLintチェック、テストを自動的に実行します。",
+  "events": [
+    {
+      "type": "file",
+      "action": "save",
+      "pattern": "**/*.{ts,js}"
+    }
+  ],
+  "prompt": "以下のファイルが保存されました: {{file.path}}\n\n次の品質チェックを実行してください：\n1. TypeScript strict modeでの型チェック（npm run typecheck）\n2. ESLintによる品質チェック（npm run lint）\n3. 関連するテストの実行（npm test）\n\n問題が見つかった場合は、修正案を提案してください。\n\nClaude.mdに記載されている開発効率化のナレッジと品質基準に基づいて評価してください：\n- TypeScript strict mode ✅\n- ESLint エラーゼロ ✅\n- テストカバレッジ 80%+ (目標)\n- 全テスト成功 ✅",
+  "button": {
+    "text": "品質チェック実行",
+    "tooltip": "TypeScript、ESLint、テストを実行して品質を確認します"
+  }
+}

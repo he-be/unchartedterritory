@@ -1,0 +1,14 @@
+{
+  "name": "プリコミットチェック",
+  "description": "コミット前に品質チェックを実行します。.huskyのpre-commitフックと同様の機能をKiroフックとして提供します。",
+  "events": [
+    {
+      "type": "manual"
+    }
+  ],
+  "prompt": "コミット前の品質チェックを実行します。\n\n以下のコマンドを順番に実行し、結果を分析してください：\n1. npm run lint - ESLintによる品質チェック\n2. npm run typecheck - TypeScript strict modeでの型チェック\n3. npm run test - すべてのテストの実行\n\nこれらのチェックはpackage.jsonのprecommitスクリプトに定義されています。\n\n問題が見つかった場合は、修正案を提案してください。すべてのチェックが成功した場合は、コミットを進めても安全であることを確認してください。",
+  "button": {
+    "text": "プリコミットチェック実行",
+    "tooltip": "コミット前に品質チェックを実行します"
+  }
+}

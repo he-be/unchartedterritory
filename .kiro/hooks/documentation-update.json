@@ -1,0 +1,16 @@
+{
+  "name": "ドキュメント更新支援",
+  "description": "設計ドキュメントが更新されたときに、関連するドキュメントの更新を提案します。",
+  "events": [
+    {
+      "type": "file",
+      "action": "save",
+      "pattern": "**/*.md"
+    }
+  ],
+  "prompt": "以下のドキュメントが更新されました: {{file.path}}\n\n更新内容に基づいて、関連する他のドキュメントの更新が必要かどうか分析してください。Claude.mdに記載されている設計ドキュメント化戦略に基づいて評価してください。\n\n特に以下のドキュメントの整合性を確認してください：\n1. ARCHITECTURE.md: 全体設計・技術選定理由\n2. DATA_MODEL.md: TypeScript型設計・データ関係\n3. WORLD_GENERATION.md: 宇宙生成アルゴリズム\n4. ECONOMIC_ENGINE.md: 価格変動・生産システム\n5. SHIP_ENGINE.md: 移動・探索・交易メカニズム\n6. API_DESIGN.md: RESTful設計・エラーハンドリング\n7. TESTING_STRATEGY.md: 品質保証・カバレッジ戦略\n8. GAMEPLAY_GUIDE.md: 実際のプレイ方法（API使用）\n\n更新が必要な場合は、具体的な変更案を提案してください。",
+  "button": {
+    "text": "ドキュメント整合性チェック",
+    "tooltip": "関連ドキュメントの更新が必要か分析します"
+  }
+}
